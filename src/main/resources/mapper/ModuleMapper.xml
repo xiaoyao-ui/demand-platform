@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+    模块数据访问层 SQL 映射文件
+    <p>
+    对应 Java 接口：{@link com.demand.module.module.mapper.ModuleMapper}
+    提供模块数据的增删查改功能，支持动态 SQL 和结果集映射。
+    </p>
+-->
+<mapper namespace="com.demand.module.module.mapper.ModuleMapper">
+
+    <!--
+        模块实体结果映射
+        <p>
+        将数据库列名（snake_case）映射到 Java 对象属性（camelCase）。
+        例如：create_time → createTime
+        </p>
+    -->
+    <resultMap id="ModuleResultMap" type="com.demand.module.module.entity.Module">
+        <id property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="code" column="code"/>
+        <result property="description" column="description"/>
+        <result property="sort" column="sort"/>
+        <result property="status" column="status"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <!--
+        查询所有启用的模块
+        <p>
+        只返回状态为启用（status=1）的模块，按排序号升序排列。
+        此方法被 {@link com.demand.module.module.service.ModuleService#listEnabledModules} 调用，
+        并使用 Spring Cache 缓存结果（Key: modules::enabled）。
+        </p>
+        <b>使用场景</b>：前端动态菜单生成、权限控制
+        <b>排序规则</b>：先按 sort 升序，再按 create_time 降序（同排序号时新模块在前）
+    -->
+    <select id="findAllEnabled" resultMap="ModuleResultMap">
+        SELECT * FROM module WHERE status = 1 ORDER BY sort ASC, create_time DESC
+    </select>
+
+    <!--
+        查询所有模块（含禁用）
+        <p>
+        返回系统中的所有模块记录，不分状态。
+        主要用于后台管理界面展示完整的模块列表。
+        </p>
+        <b>使用场景</b>：管理员查看和管理所有模块
+    -->
+    <select id="findAll" resultMap="ModuleResultMap">
+        SELECT * FROM module ORDER BY sort ASC, create_time DESC
+    </select>
+
+    <!--
+        根据 ID 查询模块
+        <p>
+        用于更新、删除操作前的存在性检查。
+        </p>
+        <b>参数</b>：id - 模块主键 ID
+        <b>返回</b>：模块对象，如果不存在则返回 null
+    -->
+    <select id="findById" resultMap="ModuleResultMap">
+        SELECT * FROM module WHERE id = #{id}
+    </select>
+
+    <!--
+        根据编码查询模块
+        <p>
+        用于创建和更新模块时的唯一性校验，防止编码重复。
+        </p>
+        <b>参数</b>：code - 模块编码（如 "demand"、"user"）
+        <b>返回</b>：模块对象，如果不存在则返回 null
+        <b>使用场景</b>：
+        <ul>
+            <li>创建模块前检查编码是否已存在</li>
+            <li>更新模块时检查新编码是否被其他模块占用</li>
+        </ul>
+    -->
+    <select id="findByCode" resultMap="ModuleResultMap">
+        SELECT * FROM module WHERE code = #{code}
+    </select>
+
+    <!--
+        插入模块
+        <p>
+        新增模块记录，自动生成主键 ID。
+        </p>
+        <b>参数</b>：module - 模块对象（包含 name、code、description 等字段）
+        <b>返回</b>：影响的行数（始终为 1）
+        <b>注意</b>：useGeneratedKeys="true" 表示使用数据库自增主键，keyProperty="id" 表示将生成的 ID 回填到对象的 id 属性
+    -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO module (name, code, description, sort, status, create_time, update_time)
+        VALUES (#{name}, #{code}, #{description}, #{sort}, #{status}, #{createTime}, #{updateTime})
+    </insert>
+
+    <!--
+        更新模块
+        <p>
+        根据 ID 更新模块信息，支持部分字段更新（动态 SQL）。
+        只有非 null 的字段才会被更新，未传入的字段保持原值不变。
+        </p>
+        <b>参数</b>：module - 模块对象（必须包含 id 字段）
+        <b>返回</b>：影响的行数
+        <b>动态 SQL</b>：使用 &lt;set&gt; 和 &lt;if&gt; 标签实现按需更新
+        <b>示例</b>：
+        <pre>
+        UPDATE module
+        SET name = '新名称', update_time = '2026-04-23 10:00:00'
+        WHERE id = 1
+        （如果只传入了 name 字段，其他字段不会被更新）
+        </pre>
+    -->
+    <update id="update">
+        UPDATE module
+        <set>
+            <if test="name != null">name = #{name},</if>
+            <if test="code != null">code = #{code},</if>
+            <if test="description != null">description = #{description},</if>
+            <if test="sort != null">sort = #{sort},</if>
+            <if test="status != null">status = #{status},</if>
+            update_time = #{updateTime}
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <!--
+        删除模块
+        <p>
+        物理删除模块记录，不可恢复。
+        删除前应在 Service 层检查模块是否存在。
+        </p>
+        <b>参数</b>：id - 模块主键 ID
+        <b>返回</b>：影响的行数
+        <b>注意</b>：删除操作会清除相关的 Redis 缓存
+    -->
+    <delete id="deleteById">
+        DELETE FROM module WHERE id = #{id}
+    </delete>
+
+</mapper>
