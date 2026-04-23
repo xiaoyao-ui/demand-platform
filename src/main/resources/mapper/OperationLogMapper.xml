@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+    操作日志数据访问层 SQL 映射文件
+    <p>
+    对应 Java 接口：{@link com.demand.module.user.mapper.OperationLogMapper}
+    提供操作日志的分页查询、全量导出和定期清理功能。
+    </p>
+
+    <h3>核心功能：</h3>
+    <ul>
+        <li>多条件组合筛选（用户名、路径、操作描述、状态、时间范围）</li>
+        <li>分页查询（用于前端列表展示）</li>
+        <li>全量查询（用于 Excel 导出）</li>
+    </ul>
+-->
+<mapper namespace="com.demand.module.user.mapper.OperationLogMapper">
+
+    <!--
+        操作日志实体结果映射
+        <p>
+        将数据库列名（snake_case）映射到 Java 对象属性（camelCase）。
+        例如：user_id → userId, error_msg → errorMsg
+        </p>
+    -->
+    <resultMap id="OperationLogResultMap" type="com.demand.module.user.entity.OperationLog">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="username" column="username"/>
+        <result property="operation" column="operation"/>
+        <result property="method" column="method"/>
+        <result property="uri" column="uri"/>
+        <result property="params" column="params"/>
+        <result property="ip" column="ip"/>
+        <result property="status" column="status"/>
+        <result property="errorMsg" column="error_msg"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <!--
+        通用查询条件片段
+        <p>
+        使用 MyBatis 动态 SQL 实现多条件组合筛选。
+        所有条件均为可选，支持任意组合。
+        </p>
+
+        <b>筛选规则</b>：
+        <ul>
+            <li>username - 模糊匹配操作用户名</li>
+            <li>uri - 模糊匹配请求路径</li>
+            <li>operation - 模糊匹配操作描述</li>
+            <li>status - 精确匹配响应状态码</li>
+            <li>startTime/endTime - 时间范围筛选（create_time >= startTime AND create_time <= endTime）</li>
+        </ul>
+
+        <b>使用方式</b>：通过 &lt;include refid="whereClause"/&gt; 引用此片段
+    -->
+    <sql id="whereClause">
+        <where>
+            <if test="username != null and username != ''">
+                AND username LIKE CONCAT('%', #{username}, '%')
+            </if>
+            <if test="uri != null and uri != ''">
+                AND uri LIKE CONCAT('%', #{uri}, '%')
+            </if>
+            <if test="operation != null and operation != ''">
+                AND operation LIKE CONCAT('%', #{operation}, '%')
+            </if>
+            <if test="status != null">
+                AND status = #{status}
+            </if>
+            <if test="startTime != null">
+                AND create_time &gt;= #{startTime}
+            </if>
+            <if test="endTime != null">
+                AND create_time &lt;= #{endTime}
+            </if>
+        </where>
+    </sql>
+
+    <!--
+        分页查询操作日志
+        <p>
+        根据筛选条件从数据库中提取日志记录，并应用物理分页。
+        结果按创建时间倒序排列，最新的日志在前。
+        </p>
+
+        <b>参数</b>：
+        <ul>
+            <li>offset - 偏移量，计算公式：(pageNum - 1) * pageSize</li>
+            <li>limit - 每页条数</li>
+        </ul>
+
+        <b>SQL 示例</b>：
+        <pre>
+        SELECT * FROM operation_log
+        WHERE username LIKE '%admin%' AND status = 200
+        ORDER BY create_time DESC
+        LIMIT 0, 10
+        </pre>
+    -->
+    <select id="selectPage" resultMap="OperationLogResultMap">
+        SELECT * FROM operation_log
+        <include refid="whereClause"/>
+        ORDER BY create_time DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <!--
+        查询符合条件的日志总数
+        <p>
+        用于前端分页组件计算总页数。
+        筛选条件与 selectPage 保持一致。
+        </p>
+
+        <b>返回</b>：符合条件的总记录数
+    -->
+    <select id="countTotal" resultType="long">
+        SELECT COUNT(*) FROM operation_log
+        <include refid="whereClause"/>
+    </select>
+
+    <!--
+        查询所有符合条件的日志（用于 Excel 导出）
+        <p>
+        不分页返回所有匹配的日志记录，适用于数据量较小的导出场景。
+        如果数据量超过 10000 条，建议增加时间范围限制或分批导出。
+        </p>
+
+        <b>使用场景</b>：后台管理系统的"导出 Excel"功能
+    -->
+    <select id="selectAll" resultMap="OperationLogResultMap">
+        SELECT * FROM operation_log
+        <include refid="whereClause"/>
+        ORDER BY create_time DESC
+    </select>
+
+</mapper>

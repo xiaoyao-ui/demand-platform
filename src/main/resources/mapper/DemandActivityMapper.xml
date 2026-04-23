@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+    需求动态时间轴数据访问层 SQL 映射文件
+    <p>
+    对应 Java 接口：{@link com.demand.module.demand.mapper.DemandActivityMapper}
+    记录需求生命周期中的所有关键操作，形成完整的时间轴。
+    </p>
+
+    <h3>典型动态类型：</h3>
+    <ul>
+        <li>CREATE - 创建需求</li>
+        <li>UPDATE - 更新需求信息</li>
+        <li>STATUS_CHANGE - 状态变更（如"待审批" → "开发中"）</li>
+        <li>ASSIGN - 分配负责人</li>
+        <li>ATTACHMENT - 上传附件</li>
+        <li>ATTACHMENT_DELETE - 删除附件</li>
+        <li>APPROVE - 审批需求</li>
+    </ul>
+
+    <h3>使用场景：</h3>
+    <ul>
+        <li>需求详情页展示操作历史时间轴</li>
+        <li>审计追踪：查看谁在什么时间执行了什么操作</li>
+        <li>故障排查：定位需求状态变更的原因</li>
+    </ul>
+-->
+<mapper namespace="com.demand.module.demand.mapper.DemandActivityMapper">
+
+    <!--
+        插入需求动态记录
+        <p>
+        记录需求的关键操作，自动生成主键 ID。
+        由 {@link com.demand.module.demand.service.DemandActivityService#saveActivity} 调用。
+        </p>
+
+        <b>参数说明</b>：
+        <ul>
+            <li>demandId - 需求 ID</li>
+            <li>operatorId - 操作人 ID</li>
+            <li>operatorName - 操作人姓名（冗余存储，避免关联查询）</li>
+            <li>actionType - 动作类型（如 CREATE、UPDATE、STATUS_CHANGE）</li>
+            <li>content - 动态内容描述（如"张三将状态从'待审批'改为'开发中'"）</li>
+            <li>extraData - 扩展数据（JSON 格式，存储额外信息）</li>
+        </ul>
+
+        <b>注意</b>：useGeneratedKeys="true" 表示使用数据库自增主键，keyProperty="id" 表示将生成的 ID 回填到对象的 id 属性
+    -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO demand_activity (demand_id, operator_id, operator_name, action_type, content, extra_data)
+        VALUES (#{demandId}, #{operatorId}, #{operatorName}, #{actionType}, #{content}, #{extraData})
+    </insert>
+
+    <!--
+        查询需求的所有动态记录
+        <p>
+        返回指定需求的所有操作记录，按创建时间倒序排列（最新的在前）。
+        用于前端展示需求的时间轴。
+        </p>
+
+        <b>SQL 示例</b>：
+        <pre>
+        SELECT * FROM demand_activity
+        WHERE demand_id = 100
+        ORDER BY create_time DESC
+        </pre>
+
+        <b>返回数据</b>：
+        <ul>
+            <li>操作人姓名（operator_name）</li>
+            <li>动作类型（action_type）</li>
+            <li>动态内容（content）</li>
+            <li>创建时间（create_time）</li>
+        </ul>
+
+        <b>前端展示建议</b>：
+        <pre>
+        [
+          {
+            operatorName: "张三",
+            actionType: "STATUS_CHANGE",
+            content: "将状态从'待审批'改为'开发中'",
+            createTime: "2026-04-23 10:30:00"
+          },
+          {
+            operatorName: "李四",
+            actionType: "ATTACHMENT",
+            content: "上传了附件 需求文档.pdf",
+            createTime: "2026-04-23 11:00:00"
+          }
+        ]
+        </pre>
+    -->
+    <select id="selectByDemandId" resultType="com.demand.module.demand.entity.DemandActivity">
+        SELECT * FROM demand_activity
+        WHERE demand_id = #{demandId}
+        ORDER BY create_time DESC
+    </select>
+</mapper>
