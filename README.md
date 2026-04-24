@@ -446,11 +446,22 @@ source /path/to/init.sql
 
 bash
 #### Windows PowerShell
+$env:DB_USERNAME="root" 
+$env:DB_PASSWORD="your-password" 
 $env:JWT_SECRET="your-secret-key" 
-$env:MAIL_PASSWORD="your-mail-password"
+$env:MAIL_USERNAME="your-email@126.com" 
+$env:MAIL_PASSWORD="your-email-password"
 #### Linux/Mac
+export DB_USERNAME="root" 
+export DB_PASSWORD="your-password" 
 export JWT_SECRET="your-secret-key" 
-export MAIL_PASSWORD="your-mail-password"
+export MAIL_USERNAME="your-email@126.com" 
+export MAIL_PASSWORD="your-email-password"
+
+### 或者复制配置文件模板：
+bash 
+cp src/main/resources/application.properties.template src/main/resources/application.properties
+#### 然后编辑 application.properties，修改默认值
 
 ### 启动项目
 

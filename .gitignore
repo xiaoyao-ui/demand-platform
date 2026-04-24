@@ -42,3 +42,12 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Configuration Files (Sensitive) ###
+src/main/resources/application.properties
+!src/main/resources/application.properties.template
+
+### Environment Files ###
+.env
+.env.local
+.env.*.local
