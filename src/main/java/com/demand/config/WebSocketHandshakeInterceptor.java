@@ -4,6 +4,8 @@ import com.demand.util.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.http.server.ServletServerHttpRequest;
@@ -12,6 +14,7 @@ import org.springframework.web.socket.server.HandshakeInterceptor;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
  * WebSocket 握手拦截器 - JWT 身份验证
@@ -51,12 +54,27 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
     private final JwtUtil jwtUtil;
 
     /**
+     * Redis 模板，用于 IP 限流
+     */
+    private final RedisTemplate<String, String> redisTemplate;
+
+    /**
+     * 是否允许匿名 WebSocket 连接
+     * <p>
+     * 开发环境：true（允许未登录用户接收验证码）<br>
+     * 生产环境：false（必须登录才能建立连接）
+     * </p>
+     */
+    @Value("${websocket.anonymous.enabled:false}")
+    private Boolean anonymousEnabled;
+
+    /**
      * 握手前执行的身份验证逻辑
      * <p>
      * 核心步骤：
      * 1. 从 HTTP 请求中提取 Token（支持 URL 参数和 Header 两种方式）
      * 2. 调用 {@link JwtUtil#getUserIdFromToken} 验证 Token 有效性
-     * 3. 将 userId 存入 {@code attributes} Map，后续可通过 {@link org.springframework.web.socket.WebSocketSession#getAttributes()} 获取
+     * 3. 将 userId 存入 {@code attributes} Map，供后续 {@link WebSocketHandlerImpl} 使用
      * </p>
      * 
      * <p>
@@ -78,6 +96,9 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
             if (request instanceof ServletServerHttpRequest servletRequest) {
                 HttpServletRequest httpServletRequest = servletRequest.getServletRequest();
 
+                // 获取客户端 IP
+                String clientIp = getClientIp(httpServletRequest);
+
                 // 1. 从请求参数或 Header 获取 Token
                 String token = httpServletRequest.getParameter("token");
                 if (token == null || token.isEmpty()) {
@@ -93,18 +114,64 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
                     if (userId != null) {
                         // 3. 将 userId 存入 attributes，供 WebSocketHandler 使用
                         attributes.put("userId", userId);
-                        log.info("WebSocket 握手成功，用户ID: {}", userId);
+                        log.info("WebSocket 握手成功，用户ID: {}, IP: {}", userId, clientIp);
                         return true;
                     }
                 }
+
+                // 4. 无 Token 时，检查是否允许匿名连接
+                if (!anonymousEnabled) {
+                    log.warn("WebSocket 握手失败：匿名连接已禁用, IP: {}", clientIp);
+                    return false;
+                }
+
+                // 5. IP 限流：同一 IP 最多建立 5 个匿名连接（10分钟内）
+                String anonymousKey = "ws:anonymous:ip:" + clientIp;
+                Long count = redisTemplate.opsForValue().increment(anonymousKey);
+                if (count != null && count == 1) {
+                    redisTemplate.expire(anonymousKey, 10, TimeUnit.MINUTES);
+                }
+
+                if (count != null && count > 5) {
+                    log.warn("WebSocket 握手失败：IP {} 匿名连接数超限 ({})", clientIp, count);
+                    return false;
+                }
+
+                // 6. 允许匿名连接（用于接收验证码等）
+                String anonymousId = "anonymous_" + System.currentTimeMillis();
+                attributes.put("userId", -1L); // 使用 -1 表示匿名用户
+                attributes.put("anonymousId", anonymousId);
+                log.info("WebSocket 握手成功（匿名用户）: {}, IP: {}", anonymousId, clientIp);
+                return true;
             }
 
-            log.warn("WebSocket 握手失败：无效的 Token");
+            log.warn("WebSocket 握手失败：无效的请求类型");
             return false;
         } catch (Exception e) {
             log.error("WebSocket 握手异常", e);
             return false;
         }
+    }
+
+    /**
+     * 获取客户端真实 IP
+     *
+     * @param request HTTP 请求
+     * @return 客户端 IP 地址
+     */
+    private String getClientIp(HttpServletRequest request) {
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("X-Real-IP");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getRemoteAddr();
+        }
+        // 多个代理时，取第一个 IP
+        if (ip != null && ip.contains(",")) {
+            ip = ip.split(",")[0].trim();
+        }
+        return ip;
     }
 
     /**

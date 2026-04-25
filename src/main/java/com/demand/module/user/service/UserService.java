@@ -88,17 +88,49 @@ public class UserService {
             throw new BusinessException("用户名已存在");
         }
 
-        // 2. 验证邮箱不能为空
-        if (registerDTO.getEmail() == null || registerDTO.getEmail().isEmpty()) {
-            throw new BusinessException("邮箱不能为空");
+        // 2. 验证至少提供一个验证码（邮箱或手机）
+        boolean hasEmailCode = registerDTO.getEmailCode() != null && !registerDTO.getEmailCode().isEmpty();
+        boolean hasPhoneCode = registerDTO.getPhoneCode() != null && !registerDTO.getPhoneCode().isEmpty();
+        
+        if (!hasEmailCode && !hasPhoneCode) {
+            throw new BusinessException("请至少提供邮箱验证码或手机验证码");
         }
 
-        // 3. 验证邮箱验证码
-        if (!verificationCodeService.verifyCode(registerDTO.getEmail(), registerDTO.getEmailCode(), "email")) {
-            throw new BusinessException("邮箱验证码错误或已过期");
+        // 3. 验证邮箱格式（如果提供了邮箱）
+        if (registerDTO.getEmail() != null && !registerDTO.getEmail().isEmpty()) {
+            if (!registerDTO.getEmail().matches("^[\\w-\\.]+@[\\w-\\.]+\\.[a-z]{2,}$")) {
+                throw new BusinessException("邮箱格式不正确");
+            }
         }
 
-        // 4. 创建用户对象并设置默认值
+        // 4. 验证手机号格式（如果提供了手机号）
+        if (registerDTO.getPhone() != null && !registerDTO.getPhone().isEmpty()) {
+            if (!registerDTO.getPhone().matches("^1[3-9]\\d{9}$")) {
+                throw new BusinessException("手机号格式不正确");
+            }
+        }
+
+        // 5. 验证验证码（优先验证邮箱，其次验证手机）
+        boolean codeValid = false;
+        if (hasEmailCode) {
+            if (registerDTO.getEmail() == null || registerDTO.getEmail().isEmpty()) {
+                throw new BusinessException("邮箱不能为空");
+            }
+            codeValid = verificationCodeService.verifyCode(registerDTO.getEmail(), registerDTO.getEmailCode(), "email");
+            if (!codeValid) {
+                throw new BusinessException("邮箱验证码错误或已过期");
+            }
+        } else if (hasPhoneCode) {
+            if (registerDTO.getPhone() == null || registerDTO.getPhone().isEmpty()) {
+                throw new BusinessException("手机号不能为空");
+            }
+            codeValid = verificationCodeService.verifyCode(registerDTO.getPhone(), registerDTO.getPhoneCode(), "phone");
+            if (!codeValid) {
+                throw new BusinessException("手机验证码错误或已过期");
+            }
+        }
+
+        // 6. 创建用户对象并设置默认值
         User user = new User();
         user.setUsername(registerDTO.getUsername());
         user.setPassword(passwordEncoder.encode(registerDTO.getPassword()));
@@ -476,15 +508,53 @@ public class UserService {
         if (updateDTO.getRealName() != null) {
             user.setRealName(updateDTO.getRealName());
         }
+        
         if (updateDTO.getEmail() != null) {
-            // 检查邮箱是否被其他用户使用
-            User existUser = userMapper.findByEmail(updateDTO.getEmail());
-            if (existUser != null && !existUser.getId().equals(userId)) {
-                throw new BusinessException("邮箱已被其他用户使用");
+            // 判断邮箱是否修改
+            boolean emailChanged = !updateDTO.getEmail().equals(user.getEmail());
+            
+            if (emailChanged) {
+                // 邮箱修改了，需要验证验证码
+                if (updateDTO.getEmailCode() == null || updateDTO.getEmailCode().isEmpty()) {
+                    throw new BusinessException("修改邮箱需要验证码");
+                }
+                
+                // 验证邮箱验证码
+                if (!verificationCodeService.verifyCode(updateDTO.getEmail(), updateDTO.getEmailCode(), "email")) {
+                    throw new BusinessException("邮箱验证码错误或已过期");
+                }
+                
+                // 检查邮箱是否被其他用户使用
+                User existUser = userMapper.findByEmail(updateDTO.getEmail());
+                if (existUser != null && !existUser.getId().equals(userId)) {
+                    throw new BusinessException("邮箱已被其他用户使用");
+                }
             }
+            
             user.setEmail(updateDTO.getEmail());
         }
+        
         if (updateDTO.getPhone() != null) {
+            // 判断手机号是否修改
+            boolean phoneChanged = user.getPhone() == null || !updateDTO.getPhone().equals(user.getPhone());
+            
+            if (phoneChanged) {
+                // 手机号修改了，需要验证验证码
+                if (updateDTO.getPhoneCode() == null || updateDTO.getPhoneCode().isEmpty()) {
+                    throw new BusinessException("修改手机号需要验证码");
+                }
+                
+                // 验证手机号格式
+                if (!updateDTO.getPhone().matches("^1[3-9]\\d{9}$")) {
+                    throw new BusinessException("手机号格式不正确");
+                }
+                
+                // 验证手机验证码
+                if (!verificationCodeService.verifyCode(updateDTO.getPhone(), updateDTO.getPhoneCode(), "phone")) {
+                    throw new BusinessException("手机验证码错误或已过期");
+                }
+            }
+            
             user.setPhone(updateDTO.getPhone());
         }
         

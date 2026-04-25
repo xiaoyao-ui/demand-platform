@@ -1,5 +1,6 @@
 package com.demand.module.user.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
@@ -18,6 +19,7 @@ public class UserPhoneLoginDTO {
     private String phone;
 
     @NotBlank(message = "验证码不能为空")
+    @JsonProperty("code")
     @Schema(description = "验证码", example = "123456", requiredMode = Schema.RequiredMode.REQUIRED)
     private String phoneCode;
 }

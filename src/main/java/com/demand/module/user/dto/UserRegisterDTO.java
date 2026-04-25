@@ -47,11 +47,9 @@ public class UserRegisterDTO {
     private String email;
 
     /**
-     * 邮箱验证码
+     * 邮箱验证码（与手机验证码二选一）
      */
-    @NotBlank(message = "邮箱验证码不能为空")
-    @Size(min = 6, max = 6, message = "验证码长度为6位")
-    @Schema(description = "邮箱验证码", example = "123456", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "邮箱验证码", example = "123456")
     private String emailCode;
 
     /**
@@ -60,6 +58,12 @@ public class UserRegisterDTO {
     @Size(max = 20, message = "手机号长度不能超过20")
     @Schema(description = "手机号", example = "13800138000")
     private String phone;
+
+    /**
+     * 手机验证码（可选，与邮箱验证码二选一）
+     */
+    @Schema(description = "手机验证码", example = "123456")
+    private String phoneCode;
 
     /**
      * 真实姓名（可选）

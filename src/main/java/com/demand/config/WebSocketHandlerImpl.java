@@ -150,4 +150,71 @@ public class WebSocketHandlerImpl extends TextWebSocketHandler {
             }
         }
     }
+
+    /**
+     * 广播消息给所有在线用户
+     * <p>
+     * 遍历所有活跃的 WebSocket 会话，将消息发送给每个在线用户。
+     * 如果某个会话发送失败（如连接已断开），会记录警告日志并继续发送给其他用户。
+     * </p>
+     * 
+     * <p>
+     * <b>安全策略：</b>
+     * <ul>
+     *   <li>匿名用户（userId = -1）只能接收验证码消息</li>
+     *   <li>已登录用户可以接收所有类型的消息</li>
+     * </ul>
+     * </p>
+     * 
+     * <p>
+     * <b>使用场景：</b>
+     * <ul>
+     *   <li>系统公告推送</li>
+     *   <li>验证码实时通知（开发环境）</li>
+     *   <li>全局状态变更通知</li>
+     * </ul>
+     * </p>
+     *
+     * @param message 要广播的消息内容（JSON 字符串）
+     */
+    public void broadcast(String message) {
+        sessionManager.getAllSessions().forEach((userId, session) -> {
+            if (session.isOpen()) {
+                try {
+                    // 安全检查：匿名用户只能接收验证码消息
+                    if (userId == -1) {
+                        if (!isVerificationCodeMessage(message)) {
+                            log.debug("匿名用户跳过非验证码消息");
+                            return; // 跳过，不发送
+                        }
+                    }
+                    
+                    session.sendMessage(new TextMessage(message));
+                    log.debug("消息已推送给用户 {}: {}", userId, message);
+                } catch (Exception e) {
+                    log.warn("向用户 {} 推送消息失败", userId, e);
+                }
+            } else {
+                log.debug("用户 {} 的会话已关闭，跳过推送", userId);
+            }
+        });
+    }
+
+    /**
+     * 判断消息是否为验证码类型
+     *
+     * @param message JSON 消息
+     * @return true 表示是验证码消息
+     */
+    private boolean isVerificationCodeMessage(String message) {
+        try {
+            com.fasterxml.jackson.databind.JsonNode jsonNode = 
+                new com.fasterxml.jackson.databind.ObjectMapper().readTree(message);
+            String type = jsonNode.get("type").asText();
+            return "VERIFICATION_CODE".equals(type);
+        } catch (Exception e) {
+            log.warn("解析消息类型失败", e);
+            return false;
+        }
+    }
 }

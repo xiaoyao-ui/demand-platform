@@ -153,4 +153,25 @@ public class WebSocketSessionManager {
             log.warn("用户 {} 不在线或连接已关闭，消息推送失败", userId);
         }
     }
+
+    /**
+     * 获取所有用户的会话映射
+     * <p>
+     * 返回当前所有在线用户的 WebSocket Session 映射表，用于广播消息等场景。
+     * </p>
+     * 
+     * <p>
+     * <b>使用场景：</b>
+     * <ul>
+     *   <li>系统公告广播</li>
+     *   <li>验证码实时通知（开发环境）</li>
+     *   <li>全局状态变更推送</li>
+     * </ul>
+     * </p>
+     *
+     * @return 用户 ID 到 WebSocket Session 的映射表
+     */
+    public Map<Long, WebSocketSession> getAllSessions() {
+        return userSessions;
+    }
 }

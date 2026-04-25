@@ -1,6 +1,8 @@
 package com.demand.module.user.service;
 
 import com.demand.exception.BusinessException;
+import com.demand.module.notification.dto.VerificationCodeNotification;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -9,6 +11,7 @@ import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
@@ -53,6 +56,16 @@ public class VerificationCodeService {
     private final JavaMailSender mailSender;
 
     /**
+     * WebSocket 处理器，用于推送验证码通知
+     */
+    private final com.demand.config.WebSocketHandlerImpl webSocketHandler;
+
+    /**
+     * JSON 序列化工具
+     */
+    private final ObjectMapper objectMapper;
+
+    /**
      * 验证码有效期（秒），默认 300 秒（5 分钟）
      */
     @Value("${verification.code.expiration:300}")
@@ -84,6 +97,25 @@ public class VerificationCodeService {
      */
     @Value("${sms.mock.enabled:true}")
     private Boolean smsMockEnabled;
+
+    /**
+     * 是否启用邮箱模拟模式，默认 false
+     * <p>
+     * 开发环境下将验证码打印到日志，无需配置 SMTP
+     * </p>
+     */
+    @Value("${email.mock.enabled:false}")
+    private Boolean emailMockEnabled;
+
+    /**
+     * 是否启用 WebSocket 推送验证码，默认 false
+     * <p>
+     * 开发环境下可通过 WebSocket 实时推送验证码到前端，提升体验
+     * 生产环境建议关闭，避免安全风险
+     * </p>
+     */
+    @Value("${verification.code.websocket.push.enabled:false}")
+    private Boolean websocketPushEnabled;
 
     /**
      * 发件人邮箱地址
@@ -138,6 +170,9 @@ public class VerificationCodeService {
             log.info("【模拟短信】手机号: {}, 验证码: {}, IP: {}", phone, code, clientIp);
             saveCode(phone, code, "phone");
             updateIpLimit(clientIp, "phone"); // 记录 IP 发送次数
+            
+            // 通过 WebSocket 推送验证码到前端
+            pushVerificationCodeToClient(phone, code, "phone");
         } else {
             log.warn("短信服务未配置，请使用模拟模式");
             throw new BusinessException("短信服务未配置");
@@ -165,18 +200,41 @@ public class VerificationCodeService {
         saveCode(email, code, "email");
         updateIpLimit(clientIp, "email"); // 记录 IP 发送次数
 
-        try {
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setFrom(mailFrom);
-            message.setTo(email);
-            message.setSubject("需求管理平台 - 验证码");
-            message.setText("您的验证码是：" + code + "，有效期5分钟。请勿将验证码泄露给他人。");
+        //开启 SMTP配置发送
+//        try {
+//            SimpleMailMessage message = new SimpleMailMessage();
+//            message.setFrom(mailFrom);
+//            message.setTo(email);
+//            message.setSubject("需求管理平台 - 验证码");
+//            message.setText("您的验证码是：" + code + "，有效期5分钟。请勿将验证码泄露给他人。");
+//
+//            mailSender.send(message);
+//            log.info("邮箱验证码发送成功: {}, IP: {}", email, clientIp);
+//        } catch (Exception e) {
+//            log.error("邮箱验证码发送失败: {}", email, e);
+//            throw new BusinessException("验证码发送失败，请稍后重试");
+//        }
 
-            mailSender.send(message);
-            log.info("邮箱验证码发送成功: {}, IP: {}", email, clientIp);
-        } catch (Exception e) {
-            log.error("邮箱验证码发送失败: {}", email, e);
-            throw new BusinessException("验证码发送失败，请稍后重试");
+        // 模拟邮箱验证码发送
+        if (emailMockEnabled) {
+            log.info("【模拟邮件】邮箱: {}, 验证码: {}, IP: {}", email, code, clientIp);
+            
+            // 通过 WebSocket 推送验证码到前端
+            pushVerificationCodeToClient(email, code, "email");
+        } else {
+            try {
+                SimpleMailMessage message = new SimpleMailMessage();
+                message.setFrom(mailFrom);
+                message.setTo(email);
+                message.setSubject("需求管理平台 - 验证码");
+                message.setText("您的验证码是：" + code + "，有效期5分钟。请勿将验证码泄露给他人。");
+
+                mailSender.send(message);
+                log.info("邮箱验证码发送成功: {}, IP: {}", email, clientIp);
+            } catch (Exception e) {
+                log.error("邮箱验证码发送失败: {}", email, e);
+                throw new BusinessException("验证码发送失败，请稍后重试");
+            }
         }
     }
 
@@ -364,5 +422,78 @@ public class VerificationCodeService {
         if (email == null || !email.matches("^[\\w-\\.]+@[\\w-\\.]+\\.[a-z]{2,}$")) {
             throw new BusinessException("邮箱格式不正确");
         }
+    }
+
+    /**
+     * 通过 WebSocket 推送验证码到前端
+     * <p>
+     * 将验证码实时推送到客户端，提升用户体验，避免查看日志。
+     * 仅在模拟模式下且开启 WebSocket 推送时生效。
+     * </p>
+     *
+     * @param target   目标（手机号或邮箱）
+     * @param code     验证码
+     * @param type     类型（"phone" 或 "email"）
+     */
+    private void pushVerificationCodeToClient(String target, String code, String type) {
+        if (!websocketPushEnabled) {
+            log.debug("WebSocket 推送验证码功能已禁用");
+            return;
+        }
+
+        try {
+            // 脱敏处理：只显示部分信息
+            String maskedTarget = maskTarget(target, type);
+            
+            VerificationCodeNotification notification = VerificationCodeNotification.builder()
+                    .type("VERIFICATION_CODE")
+                    .code(code)
+                    .codeType(type)
+                    .target(maskedTarget)
+                    .expiration(codeExpiration)
+                    .timestamp(Instant.now().toEpochMilli())
+                    .build();
+
+            String message = objectMapper.writeValueAsString(notification);
+            
+            // 广播给所有连接的客户端
+            webSocketHandler.broadcast(message);
+            
+            log.info("✅ 验证码已通过 WebSocket 推送: {}={}, 验证码: {}", type, maskedTarget, code);
+        } catch (Exception e) {
+            log.error("❌ WebSocket 推送验证码失败", e);
+            // 推送失败不影响验证码发送，只是降级为日志方式
+        }
+    }
+
+    /**
+     * 脱敏处理目标信息
+     * <p>
+     * 手机号：138****5678<br>
+     * 邮箱：zh***@example.com
+     * </p>
+     *
+     * @param target 目标（手机号或邮箱）
+     * @param type   类型（"phone" 或 "email"）
+     * @return 脱敏后的字符串
+     */
+    private String maskTarget(String target, String type) {
+        if ("phone".equals(type)) {
+            // 手机号脱敏：138****5678
+            if (target != null && target.length() == 11) {
+                return target.substring(0, 3) + "****" + target.substring(7);
+            }
+            return target;
+        } else if ("email".equals(type)) {
+            // 邮箱脱敏：zh***@example.com
+            if (target != null) {
+                int atIndex = target.indexOf("@");
+                if (atIndex > 2) {
+                    return target.substring(0, 2) + "***" + target.substring(atIndex);
+                }
+            }
+            return target;
+        }
+        return target;
     }
 }

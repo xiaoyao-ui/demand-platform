@@ -28,7 +28,7 @@
 
 ### 缓存 & 消息
 - **Redis 6.0+** - 缓存、验证码存储、会话管理
-- **WebSocket** - 实时通知推送
+- **WebSocket** - 实时通知推送、验证码实时推送
 - **STOMP** - WebSocket 子协议
 
 ### 邮件 & 文件
@@ -54,15 +54,17 @@
 
 ### 1. 用户认证系统
 - ✅ 用户名密码登录
-- ✅ 邮箱验证码登录（真实邮件发送）
-- 📱 手机验证码登录（⚠️ **模拟模式**，未接入真实短信服务）
+- ✅ 邮箱验证码登录（📧 **模拟模式**，开发环境控制台输出验证码）
+- 📱 手机验证码登录（📧 **模拟模式**，未接入真实短信服务）
 - ✅ 邮箱验证码注册
+- 📱 手机验证码注册（📧 **模拟模式**）
 - ✅ JWT Token 认证
 - ✅ 四种角色：只读用户(0)、普通用户(1)、管理员(2)、项目经理(3)
 - ✅ 数据脱敏（手机号、邮箱自动脱敏）
 - ✅ 账户禁用/启用管理
 - ✅ 密码修改
 - ✅ 头像上传
+- ✅ 个人信息修改（邮箱/手机号修改需验证码验证）
 
 ### 2. 权限控制系统（RBAC）
 - ✅ 基于角色的访问控制
@@ -98,21 +100,26 @@
 - ✅ 定时审批提醒
 
 ### 5. 验证码系统
-- ✅ 邮箱验证码（真实邮件发送，SSL 加密，126邮箱）
-- 📱 短信验证码（⚠️ **模拟模式**，未接入真实 SMS 服务）
+- 📧 邮箱验证码（⚠️ **模拟模式**，开发环境控制台输出 + WebSocket 实时推送）
+- 📱 短信验证码（⚠️ **模拟模式**，未接入真实 SMS 服务，WebSocket 实时推送）
 - ✅ Redis 存储，5分钟过期
 - ✅ 发送频率限制（1分钟1次，每天5次）
 - ✅ 验证码长度可配置（默认6位）
+- ✅ WebSocket 实时推送验证码到前端（开发环境）
+- ✅ 匿名 WebSocket 连接（用于注册/登录页面接收验证码）
+- ✅ IP 限流保护（防止恶意刷验证码）
 
 ### 6. 实时通知系统
 - ✅ WebSocket 实时推送
 - ✅ 审批结果通知
 - ✅ 需求分配通知
+- ✅ 验证码实时推送（开发环境）
 - ✅ 定时提醒通知
 - ✅ 通知已读/未读状态管理
 - ✅ 个人通知中心
 - ✅ WebSocket 会话管理
 - ✅ JWT 鉴权拦截
+- ✅ 匿名用户支持（限接收验证码）
 
 ### 7. 监控与审计
 - ✅ 操作审计日志（持久化到数据库）
@@ -121,7 +128,7 @@
 - ✅ 失败操作告警
 - ✅ Spring Boot Actuator 监控端点（health、info、metrics）
 - ✅ 定时任务（清理验证码、日志清理、审批提醒）
-- ✅ Redis/MySQL/Mail 健康检查
+- ✅ Redis/MySQL 健康检查
 - ✅ 操作日志导出（Excel）
 
 ### 8. 数据字典
@@ -237,13 +244,28 @@ demand/
 ### 用户注册登录流程
 
 开始 → {注册或登录?} 
-→ 注册 → 发送邮箱验证码 → 提交注册信息 → 创建用户 
-→ 登录 → 输入账号密码/邮箱验证码/手机验证码 → 生成 JWT Token → 返回 Token
+→ 注册 → {选择验证方式?} 
+  → 邮箱注册 → 发送邮箱验证码 → WebSocket 推送 → 提交注册信息 → 创建用户 
+  → 手机注册 → 发送手机验证码 → WebSocket 推送 → 提交注册信息 → 创建用户
+→ 登录 → {选择登录方式?}
+  → 账号密码 → 生成 JWT Token → 返回 Token
+  → 邮箱验证码 → 发送验证码 → WebSocket 推送 → 验证通过 → 返回 Token
+  → 手机验证码 → 发送验证码 → WebSocket 推送 → 验证通过 → 返回 Token
 
 **流程说明：**
-- **注册**：发送邮箱验证码 → 验证通过后创建账户
+- **注册**：支持邮箱/手机二选一，验证码通过 WebSocket 实时推送到前端
 - **登录**：支持三种方式（用户名密码/邮箱验证码/手机验证码）
 - **认证**：后续请求携带 Token，系统自动验证身份和权限
+
+### 个人信息修改流程
+
+开始 → 修改邮箱/手机号 → 获取验证码 → WebSocket 推送 → 输入验证码 → 验证通过 → 保存修改
+
+**安全策略：**
+- 仅修改真实姓名：无需验证码
+- 修改邮箱：必须验证新邮箱的验证码
+- 修改手机号：必须验证新手机号的验证码
+- 同时修改邮箱和手机：两个验证码都要验证
 
 ### 需求审批流程
 
@@ -304,10 +326,10 @@ public Result<?> deleteResource(@PathVariable Long id) { }
 
 | 接口 | 方法 | 说明 | 权限 |
 |------|------|------|------|
-| /api/user/register | POST | 用户注册 | 公开 |
+| /api/user/register | POST | 用户注册（邮箱/手机二选一） | 公开 |
 | /api/user/login | POST | 用户名密码登录 | 公开 |
-| /api/user/login/email | POST | 邮箱验证码登录 | 公开 |
-| /api/user/login/phone | POST | 手机验证码登录（模拟） | 公开 |
+| /api/user/login/email | POST | 邮箱验证码登录（⚠️ 模拟） | 公开 |
+| /api/user/login/phone | POST | 手机验证码登录（⚠️ 模拟） | 公开 |
 | /api/user/current | GET | 获取当前用户信息 | 登录用户 |
 | /api/user/list | GET | 查询所有用户 | 管理员 |
 | /api/user/{id} | GET | 获取用户详情 | 管理员 |
@@ -323,8 +345,8 @@ public Result<?> deleteResource(@PathVariable Long id) { }
 
 | 接口 | 方法 | 说明 | 权限 |
 |------|------|------|------|
-| /api/verification/email | POST | 发送邮箱验证码 | 公开 |
-| /api/verification/phone | POST | 发送手机验证码（⚠️ 模拟模式） | 公开 |
+| /api/verification/email | POST | 发送邮箱验证码（⚠️ 模拟） | 公开 |
+| /api/verification/phone | POST | 发送手机验证码（⚠️ 模拟） | 公开 |
 
 ### 需求管理接口
 
@@ -437,9 +459,9 @@ public Result<?> deleteResource(@PathVariable Long id) { }
 ### 数据库初始化
 
 sql 
--- 创建数据库 
+#### -- 创建数据库 
 CREATE DATABASE demand_db DEFAULT CHARSET utf8mb4;
--- 执行初始化脚本 
+#### -- 执行初始化脚本 
 source /path/to/init.sql
 
 ### 配置环境变量（可选）
@@ -451,12 +473,18 @@ $env:DB_PASSWORD="your-password"
 $env:JWT_SECRET="your-secret-key" 
 $env:MAIL_USERNAME="your-email@126.com" 
 $env:MAIL_PASSWORD="your-email-password"
+$env:EMAIL_MOCK_ENABLED="true"
+$env:WEBSOCKET_PUSH_ENABLED="true"
+$env:WEBSOCKET_ANONYMOUS_ENABLED="true"
 #### Linux/Mac
 export DB_USERNAME="root" 
 export DB_PASSWORD="your-password" 
 export JWT_SECRET="your-secret-key" 
 export MAIL_USERNAME="your-email@126.com" 
 export MAIL_PASSWORD="your-email-password"
+export EMAIL_MOCK_ENABLED="true"
+export WEBSOCKET_PUSH_ENABLED="true"
+export WEBSOCKET_ANONYMOUS_ENABLED="true"
 
 ### 或者复制配置文件模板：
 bash 
@@ -515,7 +543,9 @@ sms.mock.enabled=true
 verification.code.expiration=300 
 verification.code.length=6 
 verification.code.send-limit=60 
-verification.code.daily-limit=5
+verification.code.daily-limit=10
+verification.code.websocket.push.enabled=${WEBSOCKET_PUSH_ENABLED:false} 
+verification.code.email.mock.enabled=${EMAIL_MOCK_ENABLED:true}
 #### Swagger 配置
 springdoc.api-docs.path=/api-docs 
 springdoc.swagger-ui.path=/swagger-ui.html
@@ -527,11 +557,11 @@ management.endpoints.web.exposure.include=health,info,metrics
 ### 1. 注册用户
 
 bash
-#### 发送邮箱验证码
+#### 发送邮箱验证码（模拟模式，查看控制台或前端弹窗）
 curl -X POST http://localhost:8080/api/verification/email 
 -H "Content-Type: application/json" 
 -d '{"email":"test@example.com"}'
-#### 注册
+#### 邮箱注册（⚠️ 模拟模式）
 curl -X POST http://localhost:8080/api/user/register 
 -H "Content-Type: application/json" 
 -d '{ 
@@ -539,6 +569,16 @@ curl -X POST http://localhost:8080/api/user/register
   "password":"123456", 
   "email":"test@example.com", 
   "emailCode":"123456", 
+  "realName":"测试用户" 
+}'
+#### 手机注册（⚠️ 模拟模式）
+curl -X POST http://localhost:8080/api/user/register
+-H "Content-Type: application/json"
+-d '{ 
+  "username":"testuser", 
+  "password":"123456", 
+  "phone":"13800138000", 
+  "phoneCode":"123456", 
   "realName":"测试用户" 
 }'
 
@@ -552,7 +592,7 @@ curl -X POST http://localhost:8080/api/user/login
   "username":"testuser", 
   "password":"123456" 
 }'
-#### 邮箱验证码登录
+#### 邮箱验证码登录（⚠️ 模拟模式）
 curl -X POST http://localhost:8080/api/user/login/email 
 -H "Content-Type: application/json" 
 -d '{ 
@@ -567,7 +607,34 @@ curl -X POST http://localhost:8080/api/user/login/phone
   "phoneCode":"123456" 
 }'
 
-### 3. 创建需求
+### 3. 修改个人信息
+
+bash
+#### 仅修改姓名（无需验证码）
+curl -X PUT http://localhost:8080/api/user/profile 
+-H "Authorization: Bearer YOUR_TOKEN" 
+-H "Content-Type: application/json" 
+-d '{ 
+  "realName":"新姓名" 
+}'
+#### 修改邮箱（需要验证码）
+curl -X PUT http://localhost:8080/api/user/profile 
+-H "Authorization: Bearer YOUR_TOKEN" 
+-H "Content-Type: application/json" 
+-d '{ 
+  "email":"new@example.com", 
+  "emailCode":"123456" 
+}'
+#### 修改手机号（需要验证码）
+curl -X PUT http://localhost:8080/api/user/profile 
+-H "Authorization: Bearer YOUR_TOKEN" 
+-H "Content-Type: application/json" 
+-d '{ 
+  "phone":"13900139000", 
+  "phoneCode":"123456" 
+}'
+
+### 4. 创建需求
 
 bash 
 curl -X POST http://localhost:8080/api/demand 
@@ -632,6 +699,7 @@ GET http://localhost:8080/actuator/metrics
 - Token 过期机制（默认24小时）
 - 密码加密存储（BCrypt）
 - 验证码防暴力破解
+- WebSocket 匿名连接 IP 限流
 
 ### 2. 授权安全
 - RBAC 角色权限控制
@@ -678,18 +746,33 @@ GET http://localhost:8080/actuator/metrics
 
 ### 重要说明
 
-1. **手机验证码功能**：当前为**模拟模式**（`sms.mock.enabled=true`），未接入真实短信服务（如阿里云、腾讯云 SMS）。开发测试时验证码会直接返回给前端，生产环境需接入真实短信服务。
+1. **手机验证码功能**：当前为**模拟模式**（`sms.mock.enabled=true`），未接入真实短信服务（如阿里云、腾讯云 SMS）。开发测试时验证码会通过 WebSocket 实时推送到前端，生产环境需接入真实短信服务。
 
-2. **启动前准备**：确保 MySQL 和 Redis 服务已运行
-3. **邮箱配置**：验证码需要正确配置 SMTP 信息（默认使用126邮箱）
-4. **生产环境**：建议使用环境变量管理敏感配置（JWT Secret、邮箱密码等）
-5. **验证码限制**：验证码错误5次后会被锁定10分钟
-6. **只读用户**：只能查看数据，不能执行写操作
-7. **文件上传**：支持类型：jpg,jpeg,png,gif,pdf,doc,docx,xls,xlsx,txt,zip,rar
-8. **文件大小**：限制 10MB，可通过配置修改
-9. **数据字典**：初始化后会自动缓存到 Redis
-10. **JWT Secret**：生产环境务必修改默认值
-11. **定期清理**：定时任务会自动清理操作日志和过期数据
+2. **邮箱验证码功能**：当前开发环境为**模拟模式**（`verification.code.email.mock.enabled=true`），验证码通过 WebSocket 实时推送到前端并在控制台输出。生产环境请设置为 `false`，使用真实 SMTP 邮件服务。
+
+3. **WebSocket 实时推送验证码**：开发环境开启（`verification.code.websocket.push.enabled=true`），方便测试时直接在前端获取验证码，无需查看后台日志。生产环境建议关闭。
+
+4. **WebSocket 匿名连接**：开发环境开启（`websocket.anonymous.enabled=true`），允许未登录用户建立 WebSocket 连接以接收注册/登录页面的验证码。生产环境必须关闭，防止匿名连接滥用。
+
+5. **启动前准备**：确保 MySQL 和 Redis 服务已运行
+
+6. **邮箱配置**：生产环境需正确配置 SMTP 信息（默认使用126邮箱，端口465 SSL）
+
+7. **生产环境**：建议使用环境变量管理敏感配置（JWT Secret、邮箱密码等）
+
+8. **验证码限制**：验证码错误5次后会被锁定10分钟
+
+9. **只读用户**：只能查看数据，不能执行写操作
+
+10. **文件上传**：支持类型：jpg,jpeg,png,gif,pdf,doc,docx,xls,xlsx,txt,zip,rar
+
+11. **文件大小**：限制 10MB，可通过配置修改
+
+12. **数据字典**：初始化后会自动缓存到 Redis
+
+13. **JWT Secret**：生产环境务必修改默认值
+
+14. **定期清理**：定时任务会自动清理操作日志和过期数据
 
 ## 许可证
 

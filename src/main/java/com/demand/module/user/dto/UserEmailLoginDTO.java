@@ -1,5 +1,6 @@
 package com.demand.module.user.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
@@ -16,6 +17,7 @@ public class UserEmailLoginDTO {
     private String email;
 
     @NotBlank(message = "验证码不能为空")
+    @JsonProperty("code")
     @Schema(description = "验证码", example = "123456", requiredMode = Schema.RequiredMode.REQUIRED)
     private String emailCode;
 }
