@@ -1,5 +1,6 @@
 package com.demand.module.user.entity;
 
+import com.baomidou.mybatisplus.annotation.TableName;
 import com.demand.util.EmailSerializer;
 import com.demand.util.PhoneSerializer;
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -32,6 +33,7 @@ import java.time.LocalDateTime;
  * </p>
  */
 @Data
+@TableName("sys_user")
 public class User {
     /**
      * 用户 ID（主键）

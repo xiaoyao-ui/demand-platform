@@ -1,6 +1,7 @@
 package com.demand.config;
 
 import com.demand.exception.BusinessException;
+import com.demand.module.user.mapper.PermissionMapper;
 import com.demand.util.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -38,6 +39,7 @@ public class JwtInterceptor implements HandlerInterceptor {
 
     private final JwtUtil jwtUtil;
     private final PermissionContext permissionContext;
+    private final PermissionMapper permissionMapper;
 
     /**
      * 请求预处理：验证 JWT Token
@@ -95,9 +97,13 @@ public class JwtInterceptor implements HandlerInterceptor {
         } else {
             permissionContext.setRoles(new ArrayList<>()); // 防止空指针
         }
-        
-        // 7. 记录访问日志
-        log.info("用户操作: userId={}, username={}, role={}, uri={}, method={}, ip={}", 
+
+        // 7. 获取用户权限并保存到请求属性
+        List<String> permissions = permissionMapper.selectPermissionKeysByUserId(userId);
+        request.setAttribute("permissions", permissions);
+
+        // 8. 记录访问日志
+        log.info("用户操作: userId={}, username={}, roles={}, uri={}, method={}, ip={}", 
                 userId, username, rolesStr, request.getRequestURI(), request.getMethod(), getClientIp(request));
         return true;
     }

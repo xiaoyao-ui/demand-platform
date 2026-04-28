@@ -2,12 +2,15 @@ package com.demand.module.user.service;
 
 import com.demand.config.PermissionContext;
 import com.demand.exception.BusinessException;
+import com.demand.module.user.mapper.PermissionMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 权限验证服务
@@ -42,6 +45,11 @@ public class PermissionService {
     private final PermissionContext permissionContext;
 
     /**
+     * 权限映射接口，用于查询权限信息
+     */
+    private final PermissionMapper permissionMapper;
+
+    /**
      * 获取当前登录用户的角色列表
      */
     public List<String> getCurrentUserRoles() {
@@ -53,6 +61,75 @@ public class PermissionService {
      */
     public boolean hasRole(String roleKey) {
         return permissionContext.hasRole(roleKey);
+    }
+
+    /**
+     * 判断当前用户是否拥有多角色
+     */
+    public boolean hasAnyRole(String... roleKeys) {
+        if (roleKeys == null || roleKeys.length == 0) {
+            return true;
+        }
+
+        List<String> userRoles = permissionContext.getRoles();
+        if (userRoles == null || userRoles.isEmpty()) {
+            return false;
+        }
+
+        for (String roleKey : roleKeys) {
+            if (userRoles.contains(roleKey)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 判断当前用户是否拥有指定权限
+     */
+    public boolean hasPermission(String permissionKey) {
+        if (permissionContext.isAdmin()) {
+            return true;
+        }
+
+        Long userId = permissionContext.getUserId();
+        if (userId == null) {
+            return false;
+        }
+
+        List<String> permissions = permissionMapper.selectPermissionKeysByUserId(userId);
+        return permissions != null && permissions.contains(permissionKey);
+    }
+
+    /**
+     * 批量判断当前用户是否拥有多权限
+     */
+    public boolean hasAnyPermission(String... permissionKeys) {
+        if (permissionContext.isAdmin()) {
+            return true;
+        }
+
+        if (permissionKeys == null || permissionKeys.length == 0) {
+            return true;
+        }
+
+        Long userId = permissionContext.getUserId();
+        if (userId == null) {
+            return false;
+        }
+
+        List<String> permissions = permissionMapper.selectPermissionKeysByUserId(userId);
+        if (permissions == null || permissions.isEmpty()) {
+            return false;
+        }
+
+        Set<String> permissionSet = permissions.stream().collect(Collectors.toSet());
+        for (String permissionKey : permissionKeys) {
+            if (permissionSet.contains(permissionKey)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
