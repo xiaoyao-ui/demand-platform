@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.demand.module.project.mapper.ProjectMemberMapper">
+
+    <!-- 结果映射 -->
+    <resultMap id="ProjectMemberResultMap" type="com.demand.module.project.entity.ProjectMember">
+        <id property="id" column="id"/>
+        <result property="projectId" column="project_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="roleCode" column="role_code"/>
+        <result property="joinTime" column="join_time"/>
+        <result property="userName" column="user_name"/>
+        <result property="realName" column="real_name"/>
+    </resultMap>
+
+    <!-- 根据项目ID查询项目成员信息 -->
+    <select id="selectMembersByProjectId" resultMap="ProjectMemberResultMap">
+        SELECT pm.*, u.username AS user_name, u.real_name
+        FROM sys_project_member pm
+        LEFT JOIN sys_user u ON pm.user_id = u.id
+        WHERE pm.project_id = #{projectId}
+        ORDER BY pm.join_time ASC
+    </select>
+
+    <!-- 根据项目ID和用户ID查询项目成员信息 -->
+    <select id="selectMember" resultMap="ProjectMemberResultMap">
+        SELECT pm.*, u.username AS user_name, u.real_name
+        FROM sys_project_member pm
+        LEFT JOIN sys_user u ON pm.user_id = u.id
+        WHERE pm.project_id = #{projectId} AND pm.user_id = #{userId}
+    </select>
+
+</mapper>

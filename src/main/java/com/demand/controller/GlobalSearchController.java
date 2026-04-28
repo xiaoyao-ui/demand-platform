@@ -3,8 +3,6 @@ package com.demand.controller;
 import com.demand.common.Result;
 import com.demand.module.demand.entity.Demand;
 import com.demand.module.demand.mapper.DemandMapper;
-import com.demand.module.module.entity.Module;
-import com.demand.module.module.mapper.ModuleMapper;
 import com.demand.module.user.entity.User;
 import com.demand.module.user.mapper.RoleMapper;
 import com.demand.module.user.mapper.UserMapper;
