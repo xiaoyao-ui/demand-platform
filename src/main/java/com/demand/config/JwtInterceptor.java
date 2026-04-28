@@ -9,6 +9,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
 /**
  * JWT 身份认证拦截器
  * <p>
@@ -75,21 +79,26 @@ public class JwtInterceptor implements HandlerInterceptor {
         // 4. 从 Token 中解析用户身份信息
         Long userId = jwtUtil.getUserIdFromToken(token);
         String username = jwtUtil.getUsernameFromToken(token);
-        Integer role = jwtUtil.getRoleFromToken(token);
+        String rolesStr = jwtUtil.getRolesFromToken(token);
         
         // 5. 将用户信息存入线程隔离的上下文（供 @RequirePermission 等组件使用）
         permissionContext.setUserId(userId);
         permissionContext.setUsername(username);
-        permissionContext.setRole(role);
         
         // 6. 同时存入 Request 属性（兼容旧代码或特定场景）
         request.setAttribute("userId", userId);
         request.setAttribute("username", username);
-        request.setAttribute("role", role);
+        // 将角色字符串转为 List 并存入
+        if (rolesStr != null && !rolesStr.isEmpty()) {
+            List<String> roles = Arrays.asList(rolesStr.split(","));
+            permissionContext.setRoles(roles);
+        } else {
+            permissionContext.setRoles(new ArrayList<>()); // 防止空指针
+        }
         
         // 7. 记录访问日志
         log.info("用户操作: userId={}, username={}, role={}, uri={}, method={}, ip={}", 
-                userId, username, role, request.getRequestURI(), request.getMethod(), getClientIp(request));
+                userId, username, rolesStr, request.getRequestURI(), request.getMethod(), getClientIp(request));
         return true;
     }
 

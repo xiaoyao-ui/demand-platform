@@ -40,11 +40,17 @@ import java.util.Map;
  * 
  * <h3>角色说明：</h3>
  * <ul>
- *   <li>0 - 只读用户：仅可查看信息，无编辑权限</li>
- *   <li>1 - 普通用户：可创建和管理自己的需求</li>
- *   <li>2 - 管理员：系统最高权限，管理所有资源</li>
- *   <li>3 - 项目经理：可审批和分配需求</li>
+ *   <li>GUEST - 只读用户：仅可查看信息，无编辑权限</li>
+ *   <li>USER - 普通用户：可创建和管理自己的需求</li>
+ *   <li>PRODUCT_MANAGER - 产品经理：可创建、查看、管理需求，参与需求评审</li>
+ *   <li>PROJECT_MANAGER - 项目经理：可审批、分配需求，管理项目进度</li>
+ *   <li>DEVELOPER - 开发工程师：可接收分配的需求，进行开发工作</li>
+ *   <li>IMPLEMENTER - 实施/测试：可进行需求测试、验收</li>
+ *   <li>SUPER_ADMIN - 超级管理员：系统最高权限，管理所有资源</li>
  * </ul>
+ * 
+ * <p><b>注意</b>：系统支持一人多角，一个用户可以拥有多个角色</p>
+
  */
 @Slf4j
 @Tag(name = "用户管理", description = "用户注册、登录和查询接口")
@@ -223,16 +229,16 @@ public class UserController {
      * </p>
      * 
      * <p>
-     * <b>权限要求</b>：仅管理员（role=2）可操作
+     * <b>权限要求</b>：仅超级管理员（role=1）可操作
      * </p>
      *
      * @param id     用户 ID
      * @param params 包含 status 字段的 Map（0-禁用，1-启用）
      * @return 操作结果
      */
-    @Operation(summary = "禁用/启用用户", description = "禁用或启用指定用户（仅管理员）")
+    @Operation(summary = "禁用/启用用户", description = "禁用或启用指定用户（仅超级管理员）")
     @PutMapping("/{id}/status")
-    @RequirePermission(roles = {2})
+    @RequirePermission(roles = {1})
     public Result<?> updateUserStatus(@Parameter(description = "用户ID") @PathVariable Long id,
                                       @RequestBody Map<String, Integer> params) {
         Integer status = params.get("status");
@@ -251,15 +257,15 @@ public class UserController {
      * </p>
      * 
      * <p>
-     * <b>权限要求</b>：仅管理员（role=2）可操作
+     * <b>权限要求</b>：仅超级管理员（role=1）可操作
      * </p>
      *
      * @param createDTO 创建用户请求对象
      * @return 操作结果
      */
-    @Operation(summary = "创建用户", description = "管理员创建新用户（仅管理员）")
+    @Operation(summary = "创建用户", description = "超级管理员创建新用户")
     @PostMapping("/create")
-    @RequirePermission(roles = {2})
+    @RequirePermission(roles = {1})
     public Result<?> createUser(@Valid @RequestBody UserCreateDTO createDTO) {
         userService.createUser(createDTO);
         return Result.success();
@@ -276,7 +282,7 @@ public class UserController {
      * <b>权限控制</b>：
      * <ul>
      *   <li>所有人可更新自己的基本信息</li>
-     *   <li>仅管理员可修改他人信息和角色</li>
+     *   <li>仅超级管理员可修改他人信息</li>
      * </ul>
      * </p>
      *
@@ -284,50 +290,47 @@ public class UserController {
      * @param updateDTO 更新请求对象
      * @return 操作结果
      */
-    @Operation(summary = "更新用户信息", description = "更新用户基本信息（所有角色可访问，但仅管理员可修改角色）")
+    @Operation(summary = "更新用户信息", description = "更新用户基本信息（所有角色可访问，但仅超级管理员可修改他人信息）")
     @PutMapping("/{id}")
     public Result<?> updateUser(@Parameter(description = "用户ID") @PathVariable Long id,
                                 @Valid @RequestBody UserUpdateDTO updateDTO) {
-        // 获取当前登录用户
         Long currentUserId = permissionService.getCurrentUserId();
-        Integer currentRole = permissionService.getCurrentUserRole();
         
-        // 非管理员不允许修改角色
-        if (currentRole != 2 && updateDTO.getRole() != null) {
-            log.warn("非管理员尝试修改用户角色: userId={}, currentRole={}, targetUserId={}", 
-                    currentUserId, currentRole, id);
-            return Result.error(403, "权限不足，仅管理员可修改用户角色");
+        if (!currentUserId.equals(id) && !permissionService.hasRole("SUPER_ADMIN")) {
+            log.warn("非本人且非超级管理员尝试修改用户信息: currentUserId={}, targetUserId={}", 
+                    currentUserId, id);
+            return Result.error(403, "权限不足，仅可修改本人信息");
         }
         
         userService.updateUser(id, updateDTO);
         return Result.success();
     }
 
-    /**
-     * 更新用户角色
-     * <p>
-     * 快速修改用户角色的专用接口，例如将普通用户提升为项目经理。
-     * </p>
-     * 
-     * <p>
-     * <b>权限要求</b>：仅管理员（role=2）可操作
-     * </p>
-     *
-     * @param id     用户 ID
-     * @param params 包含 role 字段的 Map（0-只读，1-普通，2-管理员，3-项目经理）
-     * @return 操作结果
-     */
-    @Operation(summary = "更新用户角色", description = "更新用户角色（仅管理员）")
-    @PutMapping("/{id}/role")
-    @RequirePermission(roles = {2})
-    public Result<?> updateUserRole(@Parameter(description = "用户ID") @PathVariable Long id,
-                                    @RequestBody Map<String, Integer> params) {
-        Integer role = params.get("role");
-        if (role == null || role < 0 || role > 3) {
-            return Result.error(400, "角色参数无效，必须为0-3");
+    @Operation(summary = "为用户分配角色", description = "为用户分配一个或多个角色（仅超级管理员）")
+    @PostMapping("/{id}/roles")
+    @RequirePermission(roles = {1})
+    public Result<?> assignRoles(@Parameter(description = "用户ID") @PathVariable Long id,
+                                 @RequestBody Map<String, List<Integer>> params) {
+        List<Integer> roleCodes = params.get("roleCodes");
+        if (roleCodes == null || roleCodes.isEmpty()) {
+            return Result.error(400, "角色列表不能为空");
         }
-        userService.updateUserRole(id, role);
+        
+        for (Integer roleCode : roleCodes) {
+            if (roleCode < 1 || roleCode > 7) {
+                return Result.error(400, "角色参数无效，必须为1-7");
+            }
+        }
+
+        userService.assignRolesToUser(id, roleCodes);
         return Result.success();
+    }
+
+    @Operation(summary = "获取用户角色列表", description = "获取指定用户的所有角色（所有角色可访问）")
+    @GetMapping("/{id}/roles")
+    public Result<List<String>> getUserRoles(@Parameter(description = "用户ID") @PathVariable Long id) {
+        List<String> roles = userService.getUserRoles(id);
+        return Result.success(roles);
     }
 
     /**

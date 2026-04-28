@@ -6,6 +6,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.Arrays;
+import java.util.List;
+
 /**
  * 权限验证服务
  * <p>
@@ -34,78 +37,149 @@ import org.springframework.stereotype.Service;
 public class PermissionService {
     
     /**
-     * 权限上下文，存储当前请求的用户信息（userId、role）
+     * 权限上下文，存储当前请求的用户信息
      */
     private final PermissionContext permissionContext;
+
+    /**
+     * 获取当前登录用户的角色列表
+     */
+    public List<String> getCurrentUserRoles() {
+        return permissionContext.getRoles();
+    }
+
+    /**
+     * 判断当前用户是否拥有指定角色
+     */
+    public boolean hasRole(String roleKey) {
+        return permissionContext.hasRole(roleKey);
+    }
+
+    /**
+     * 获取当前用户名
+     */
+    public String getCurrentUsername() {
+        return permissionContext.getUsername();
+    }
     
     /**
      * 检查用户是否具有指定角色之一
      * <p>
      * 支持传入多个角色代码，只要用户拥有其中之一即可通过验证。
      * </p>
-     * 
-     * <p>
-     * <b>使用示例</b>：
-     * <pre>{@code
-     * // 只允许管理员和项目经理访问
-     * checkRole(2, 3);
-     * }</pre>
-     * </p>
      *
      * @param requiredRoles 允许的角色代码列表
      * @throws BusinessException 当用户角色不在允许列表中时抛出 403 错误
      */
     public void checkRole(int... requiredRoles) {
-        Integer userRole = permissionContext.getRole();
-        
-        if (userRole == null) {
+        if (requiredRoles == null || requiredRoles.length == 0) {
+            throw new IllegalArgumentException("至少需要指定一个角色进行权限验证");
+        }
+
+        List<String> userRoles = permissionContext.getRoles();
+
+        if (userRoles == null || userRoles.isEmpty()) {
+            log.warn("权限验证失败: userId={}, 原因=用户角色未定义", permissionContext.getUserId());
             throw new BusinessException(403, "用户角色未定义");
         }
-        
-        for (int requiredRole : requiredRoles) {
-            if (userRole == requiredRole) {
-                log.debug("权限验证通过: userId={}, role={}", permissionContext.getUserId(), requiredRole);
-                return;
-            }
+
+        // 检查用户是否拥有任何一个所需角色
+        boolean hasRequiredRole = Arrays.stream(requiredRoles)
+                .anyMatch(userRoles::contains);
+
+        if (hasRequiredRole) {
+            log.debug("权限验证通过: userId={}, roles={}", permissionContext.getUserId(), userRoles);
+            return;
         }
-        
-        log.warn("权限验证失败: userId={}, userRole={}, requiredRoles={}", 
-                permissionContext.getUserId(), userRole, requiredRoles);
-        throw new BusinessException(403, "没有权限执行此操作");
+
+        log.warn("权限验证失败: userId={}, userRoles={}, requiredRoles={}",
+                permissionContext.getUserId(), userRoles, Arrays.toString(requiredRoles));
+        throw new BusinessException(403, "没有权限执行此操作，所需角色: " + Arrays.toString(requiredRoles));
     }
-    
+
     /**
      * 检查是否为管理员
-     * <p>
-     * 快捷方法，等价于 {@code checkRole(2)}。
-     * 用于需要管理员权限的操作，如用户管理、系统配置等。
-     * </p>
-     *
-     * @throws BusinessException 当用户不是管理员时抛出 403 错误
      */
     public void checkAdmin() {
         if (!permissionContext.isAdmin()) {
-            log.warn("非管理员尝试执行管理操作: userId={}", permissionContext.getUserId());
-            throw new BusinessException(403, "需要管理员权限");
+            log.warn("非超级管理员尝试执行管理操作: userId={}", permissionContext.getUserId());
+            throw new BusinessException(403, "需要超级管理员权限");
         }
     }
-    
+
     /**
-     * 检查是否不是只读用户
-     * <p>
-     * 用于写操作前的权限预检，防止只读用户（role=0）执行增删改操作。
-     * </p>
-     *
-     * @throws BusinessException 当用户是只读角色时抛出 403 错误
+     * 检查是否为项目经理
      */
-    public void checkNotReadOnly() {
-        Integer userRole = permissionContext.getRole();
-        if (userRole != null && userRole == 0) {
-            log.warn("只读用户尝试执行写操作: userId={}", permissionContext.getUserId());
-            throw new BusinessException(403, "只读用户无权执行此操作");
+    public void checkProjectManager() {
+        if (!permissionContext.isProjectManager()) {
+            log.warn("非项目经理尝试执行项目管理操作: userId={}", permissionContext.getUserId());
+            throw new BusinessException(403, "需要项目经理权限");
         }
     }
-    
+
+    /**
+     * 检查是否为产品经理
+     */
+    public void checkProductManager() {
+        if (!permissionContext.isProductManager()) {
+            log.warn("非产品经理尝试执行产品管理操作: userId={}", permissionContext.getUserId());
+            throw new BusinessException(403, "需要产品经理权限");
+        }
+    }
+
+    /**
+     * 检查是否为开发工程师
+     */
+    public void checkDeveloper() {
+        if (!permissionContext.isDeveloper()) {
+            log.warn("非开发工程师尝试执行开发操作: userId={}", permissionContext.getUserId());
+            throw new BusinessException(403, "需要开发工程师权限");
+        }
+    }
+
+    /**
+     * 检查是否为实施/测试人员
+     */
+    public void checkImplementer() {
+        if (!permissionContext.isImplementer()) {
+            log.warn("非实施/测试人员尝试执行测试操作: userId={}", permissionContext.getUserId());
+            throw new BusinessException(403, "需要实施/测试权限");
+        }
+    }
+
+    /**
+     * 检查当前用户是否具有创建需求权限
+     */
+    public void checkCanCreateDemand() {
+        if (!permissionContext.canCreateDemand()) {
+            log.warn("无权限创建需求: userId={}, roles={}", 
+                    permissionContext.getUserId(), permissionContext.getRoles());
+            throw new BusinessException(403, "没有权限创建需求");
+        }
+    }
+
+    /**
+     * 检查当前用户是否具有审批需求权限
+     */
+    public void checkCanApproveDemand() {
+        if (!permissionContext.canApproveDemand()) {
+            log.warn("无权限审批需求: userId={}, roles={}", 
+                    permissionContext.getUserId(), permissionContext.getRoles());
+            throw new BusinessException(403, "没有权限审批需求，需要项目经理或超级管理员权限");
+        }
+    }
+
+    /**
+     * 检查当前用户是否具有分配需求权限
+     */
+    public void checkCanAssignDemand() {
+        if (!permissionContext.canAssignDemand()) {
+            log.warn("无权限分配需求: userId={}, roles={}", 
+                    permissionContext.getUserId(), permissionContext.getRoles());
+            throw new BusinessException(403, "没有权限分配需求，需要项目经理或超级管理员权限");
+        }
+    }
+
     /**
      * 检查是否为资源所有者或管理员
      * <p>
@@ -169,33 +243,5 @@ public class PermissionService {
             throw new BusinessException(401, "用户未登录");
         }
         return userId;
-    }
-
-    /**
-     * 获取当前登录用户角色
-     * <p>
-     * 从 {@link PermissionContext} 中提取角色编码，用于动态权限判断。
-     * </p>
-     *
-     * @return 当前用户角色编码
-     * @throws BusinessException 当用户未登录时抛出 401 错误
-     */
-    public Integer getCurrentUserRole() {
-        Integer role = permissionContext.getRole();
-        if (role == null) {
-            log.warn("用户未登录");
-            throw new BusinessException(401, "用户未登录");
-        }
-        return role;
-    }
-    
-    /**
-     * 判断当前用户是否为只读角色
-     *
-     * @return true 表示只读用户，false 表示其他角色
-     */
-    public boolean isReadOnly() {
-        Integer role = permissionContext.getRole();
-        return role != null && role == 0;
     }
 }

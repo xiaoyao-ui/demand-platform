@@ -179,70 +179,68 @@ public class RoleController {
     @Operation(summary = "获取当前用户可访问的菜单", description = "根据用户角色返回可访问的菜单列表")
     @GetMapping("/menus")
     public Result<List<Map<String, Object>>> getUserMenus() {
-        // 1. 从 JWT 中获取当前用户角色
-        Integer userRole = permissionContext.getRole();
-        if (userRole == null) {
+        Long userId = permissionContext.getUserId();
+        if (userId == null) {
             log.warn("用户未登录，无法获取菜单");
             return Result.error(401, "用户未登录");
         }
-        
-        log.info("获取用户菜单: userRole={}", userRole);
-        
+
+        List<String> userRoles = permissionContext.getRoles();
+        log.info("获取用户菜单: userId={}, roles={}", userId, userRoles);
+
         // 2. 根据用户角色过滤菜单
         List<Map<String, Object>> menus = new ArrayList<>();
-        
+
         // 首页 - 所有角色可访问
         Map<String, Object> dashboard = new HashMap<>();
         dashboard.put("path", "/dashboard");
         dashboard.put("name", "Dashboard");
         dashboard.put("icon", "HomeFilled");
         dashboard.put("title", "首页");
-        dashboard.put("roles", Arrays.asList(0, 1, 2, 3));
+        dashboard.put("roles", Arrays.asList("READ_ONLY", "USER", "ADMIN", "PROJECT_MANAGER"));
         menus.add(dashboard);
-        
+
         // 需求管理 - 所有角色可访问
         Map<String, Object> demand = new HashMap<>();
         demand.put("path", "/demand");
         demand.put("name", "Demand");
         demand.put("icon", "List");
         demand.put("title", "需求管理");
-        demand.put("roles", Arrays.asList(0, 1, 2, 3));
+        demand.put("roles", Arrays.asList("READ_ONLY", "USER", "ADMIN", "PROJECT_MANAGER"));
         menus.add(demand);
-        
-        // 用户管理 - 仅管理员可访问
-        if (userRole == 2) {
+
+        // 管理员专属菜单
+        boolean isAdmin = userRoles.contains("ADMIN");
+        if (isAdmin) {
+            // 用户管理
             Map<String, Object> user = new HashMap<>();
             user.put("path", "/user");
             user.put("name", "User");
             user.put("icon", "UserFilled");
             user.put("title", "用户管理");
-            user.put("roles", Arrays.asList(2));
+            user.put("roles", Arrays.asList("ADMIN"));
             menus.add(user);
-        }
-        
-        // 角色权限管理 - 仅管理员可访问
-        if (userRole == 2) {
+
+            // 角色权限管理
             Map<String, Object> role = new HashMap<>();
             role.put("path", "/role");
             role.put("name", "Role");
             role.put("icon", "Management");
             role.put("title", "角色权限管理");
-            role.put("roles", Arrays.asList(2));
+            role.put("roles", Arrays.asList("ADMIN"));
             menus.add(role);
-        }
-        
-        // 操作日志 - 仅管理员可访问
-        if (userRole == 2) {
+
+            // 操作日志
             Map<String, Object> log = new HashMap<>();
             log.put("path", "/log");
             log.put("name", "Log");
             log.put("icon", "Document");
             log.put("title", "操作日志");
-            log.put("roles", Arrays.asList(2));
+            log.put("roles", Arrays.asList("ADMIN"));
             menus.add(log);
         }
-        
-        log.info("返回菜单数量: {}, userRole={}", menus.size(), userRole);
+
+        log.info("返回菜单数量: {}, userId={}", menus.size(), userId);
         return Result.success(menus);
     }
 }

@@ -6,6 +6,7 @@ import com.demand.module.demand.mapper.DemandMapper;
 import com.demand.module.module.entity.Module;
 import com.demand.module.module.mapper.ModuleMapper;
 import com.demand.module.user.entity.User;
+import com.demand.module.user.mapper.RoleMapper;
 import com.demand.module.user.mapper.UserMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -86,6 +87,11 @@ public class GlobalSearchController {
     private final UserMapper userMapper;
 
     /**
+     * 角色数据访问层
+     */
+    private final RoleMapper roleMapper;
+
+    /**
      * 执行全局搜索
      * <p>
      * 工作流程：
@@ -162,7 +168,8 @@ public class GlobalSearchController {
                     map.put("id", u.getId());
                     map.put("name", u.getRealName());
                     map.put("email", u.getEmail());
-                    map.put("role", u.getRole());
+                    List<String> roles = roleMapper.selectRoleKeysByUserId(u.getId());
+                    map.put("roles", roles);
                     map.put("category", "user");  // 标识数据类型
                     return map;
                 })

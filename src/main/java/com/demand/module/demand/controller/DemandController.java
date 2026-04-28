@@ -78,7 +78,7 @@ public class DemandController {
 
     @Operation(summary = "创建需求", description = "创建新的需求记录（只读用户不可用）")
     @PostMapping
-    @RequirePermission(roles = {1, 2})
+    @RequirePermission(roles = {1, 2, 3, 4, 5, 6})
     public Result<?> createDemand(@Valid @RequestBody DemandCreateDTO createDTO) {
         Long currentUserId = permissionService.getCurrentUserId();
         createDTO.setProposerId(currentUserId);
@@ -93,9 +93,9 @@ public class DemandController {
         return Result.success(demand);
     }
 
-    @Operation(summary = "更新需求", description = "更新需求信息和状态（只读用户不可用）")
+    @Operation(summary = "更新需求", description = "更新需求信息和状态（提出人、产品经理、项目经理、超级管理员可操作）")
     @PutMapping("/{id}")
-    @RequirePermission(roles = {1, 2}, requireOwner = true, resourceIdParam = "id")
+    @RequirePermission(roles = {1, 2, 3, 4}, requireOwner = true, resourceIdParam = "id")
     public Result<?> updateDemand(@Parameter(description = "需求ID") @PathVariable Long id, 
                                        @Valid @RequestBody DemandCreateDTO updateDTO) {
         Long operatorId = permissionService.getCurrentUserId();
@@ -113,7 +113,7 @@ public class DemandController {
         return Result.success();
     }
 
-    @Operation(summary = "删除需求", description = "删除指定需求（只读用户不可用）")
+    @Operation(summary = "删除需求", description = "删除指定需求（提出人或超级管理员可操作）")
     @DeleteMapping("/{id}")
     @RequirePermission(roles = {1, 2}, requireOwner = true, resourceIdParam = "id")
     public Result<?> deleteDemand(@Parameter(description = "需求ID") @PathVariable Long id) {
@@ -131,7 +131,7 @@ public class DemandController {
 
     @Operation(summary = "审批需求", description = "项目经理审批需求（仅项目经理和管理员）")
     @PostMapping("/approve")
-    @RequirePermission(roles = {2, 3})
+    @RequirePermission(roles = {1, 4})
     public Result<?> approveDemand(@Valid @RequestBody DemandApproveDTO approveDTO) {
         Long approverId = permissionService.getCurrentUserId();
         approvalService.approveDemand(approveDTO, approverId);
@@ -140,16 +140,16 @@ public class DemandController {
 
     @Operation(summary = "分配需求", description = "分配需求给负责人（仅项目经理和管理员）")
     @PostMapping("/assign")
-    @RequirePermission(roles = {2, 3})
+    @RequirePermission(roles = {1, 4})
     public Result<?> assignDemand(@Valid @RequestBody DemandAssignDTO assignDTO) {
         Long operatorId = permissionService.getCurrentUserId();
         assignmentService.assignDemand(assignDTO, operatorId);
         return Result.success();
     }
 
-    @Operation(summary = "查询待审批需求", description = "查询所有待审批的需求（仅项目经理和管理员）")
+    @Operation(summary = "查询待审批需求", description = "查询所有待审批的需求（仅项目经理、产品经理和超级管理员）")
     @GetMapping("/pending-approval")
-    @RequirePermission(roles = {2, 3})
+    @RequirePermission(roles = {1, 3, 4})
     public Result<PageResult<Demand>> getPendingApprovalDemands(DemandQueryDTO queryDTO) {
         queryDTO.setStatus(0);
         PageResult<Demand> pageResult = demandService.queryDemands(queryDTO);
@@ -172,7 +172,7 @@ public class DemandController {
 
     @Operation(summary = "提交需求审核", description = "将草稿状态的需求提交审核")
     @PostMapping("/{id}/submit")
-    @RequirePermission(requireOwner = true, resourceIdParam = "id")
+    @RequirePermission(roles = {2, 3, 5, 6}, requireOwner = true, resourceIdParam = "id")
     public Result<?> submitDemand(@Parameter(description = "需求ID") @PathVariable Long id) {
         Long currentUserId = permissionService.getCurrentUserId();
         demandService.submitForApproval(id, currentUserId);
@@ -181,7 +181,7 @@ public class DemandController {
 
     @Operation(summary = "撤回需求", description = "提出人撤回待审批的需求")
     @PostMapping("/{id}/withdraw")
-    @RequirePermission(requireOwner = true, resourceIdParam = "id")
+    @RequirePermission(roles = {2, 3, 5, 6}, requireOwner = true, resourceIdParam = "id")
     public Result<?> withdrawDemand(@Parameter(description = "需求ID") @PathVariable Long id,
                                     @RequestBody(required = false) DemandWithdrawDTO withdrawDTO) {
         Long currentUserId = permissionService.getCurrentUserId();

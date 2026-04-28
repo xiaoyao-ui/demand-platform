@@ -43,16 +43,4 @@ public class UserUpdateDTO {
      */
     @Schema(description = "手机验证码", example = "123456")
     private String phoneCode;
-
-    /**
-     * 角色编码（仅管理员可修改）
-     * <ul>
-     *   <li>0 - 只读用户</li>
-     *   <li>1 - 普通用户</li>
-     *   <li>2 - 管理员</li>
-     *   <li>3 - 项目经理</li>
-     * </ul>
-     */
-    @Schema(description = "角色编码", example = "1")
-    private Integer role;
 }

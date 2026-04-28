@@ -5,6 +5,7 @@ import com.demand.module.demand.mapper.DemandMapper;
 import com.demand.module.notification.service.NotificationService;
 import com.demand.module.user.entity.User;
 import com.demand.module.user.mapper.OperationLogMapper;
+import com.demand.module.user.mapper.RoleMapper;
 import com.demand.module.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -56,6 +57,11 @@ public class ScheduledTasks {
      * 用户 Mapper，用于查询项目经理列表
      */
     private final UserMapper userMapper;
+
+    /**
+     * 角色 Mapper，用于查询角色列表
+     */
+    private final RoleMapper roleMapper;
 
     /**
      * 通知服务，用于发送审批提醒
@@ -151,15 +157,29 @@ public class ScheduledTasks {
             }
             
             log.info("发现 {} 个待审批超过 24 小时的需求", pendingDemands.size());
-            
-            // 2. 查询所有项目经理（role=2）和管理员（role=3）
-            List<User> projectManagers = userMapper.findByRole(2);
-            List<User> admins = userMapper.findByRole(3);
-            
+
+            // 2. 查询所有拥有 PROJECT_MANAGER 或 SUPER_ADMIN 角色的用户
+            List<Long> projectManagerRoleIds = roleMapper.selectRoleIdsByKeys(List.of("PROJECT_MANAGER"));
+            List<Long> superAdminRoleIds = roleMapper.selectRoleIdsByKeys(List.of("SUPER_ADMIN"));
+
             // 合并接收人列表（去重）
+            Set<Long> targetRoleIds = new java.util.HashSet<>();
+            targetRoleIds.addAll(projectManagerRoleIds);
+            targetRoleIds.addAll(superAdminRoleIds);
+
+            if (targetRoleIds.isEmpty()) {
+                log.warn("系统中没有找到项目经理或超级管理员角色");
+                return;
+            }
+
+            // 3. 查询拥有这些角色的所有用户ID
             Set<Long> receiverIds = new java.util.HashSet<>();
-            projectManagers.forEach(user -> receiverIds.add(user.getId()));
-            admins.forEach(user -> receiverIds.add(user.getId()));
+            for (Long roleId : targetRoleIds) {
+                List<Long> userIds = roleMapper.selectUserIdsByRoleId(roleId);
+                if (userIds != null && !userIds.isEmpty()) {
+                    receiverIds.addAll(userIds);
+                }
+            }
             
             if (receiverIds.isEmpty()) {
                 log.warn("系统中没有项目经理或管理员，无法发送提醒");

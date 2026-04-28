@@ -13,6 +13,7 @@ import com.demand.module.demand.mapper.DemandStatusHistoryMapper;
 import com.demand.module.demand.service.DemandActivityService;
 import com.demand.module.notification.service.NotificationService;
 import com.demand.module.user.entity.User;
+import com.demand.module.user.mapper.RoleMapper;
 import com.demand.module.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,9 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -52,6 +51,7 @@ public class DemandService {
     private final DemandStatusHistoryMapper statusHistoryMapper;
     private final NotificationService notificationService;
     private final UserMapper userMapper;
+    private final RoleMapper roleMapper;
     private final DemandActivityService activityService;
 
     /**
@@ -351,7 +351,7 @@ public class DemandService {
      * @throws BusinessException 当用户无权限或状态不正确时抛出
      */
     public void submitForApproval(Long id, Long currentUserId) {
-        log.info("提交需求审核: demandId={}, currentUserId={}", id, currentUserId);
+        log.info("提交需求审核: demandId={}, userId={}", id, currentUserId);
         
         Demand existDemand = demandMapper.findById(id);
         if (existDemand == null) {
@@ -379,12 +379,20 @@ public class DemandService {
         activityService.saveActivity(id, currentUserId, operatorName,
                 "SUBMIT", "提交了审核", null);
 
-        List<User> managers = userMapper.findByRole(3);
-        if (managers != null) {
-            for (User manager : managers) {
+        List<Long> projectManagerRoleIds = roleMapper.selectRoleIdsByKeys(List.of("PROJECT_MANAGER"));
+        if (projectManagerRoleIds != null && !projectManagerRoleIds.isEmpty()) {
+            Set<Long> receiverIds = new HashSet<>();
+            for (Long roleId : projectManagerRoleIds) {
+                List<Long> userIds = roleMapper.selectUserIdsByRoleId(roleId);
+                if (userIds != null && !userIds.isEmpty()) {
+                    receiverIds.addAll(userIds);
+                }
+            }
+
+            for (Long receiverId : receiverIds) {
                 notificationService.sendNotification(
                         currentUserId,     // userId = 操作人
-                        manager.getId(),   // receiverId = 接收人
+                        receiverId,        // receiverId = 接收人
                         "新需求待审批",
                         String.format("需求【%s】已提交审核，请及时处理。", existDemand.getTitle()),
                         1,
@@ -461,12 +469,20 @@ public class DemandService {
         recordStatusChange(id, oldStatus, 0, "重新提交审核", currentUserId);
         
         // 6. 通知所有项目经理
-        List<User> managers = userMapper.findByRole(3);
-        if (managers != null) {
-            for (User manager : managers) {
+        List<Long> projectManagerRoleIds = roleMapper.selectRoleIdsByKeys(List.of("PROJECT_MANAGER"));
+        if (projectManagerRoleIds != null && !projectManagerRoleIds.isEmpty()) {
+            Set<Long> receiverIds = new java.util.HashSet<>();
+            for (Long roleId : projectManagerRoleIds) {
+                List<Long> userIds = roleMapper.selectUserIdsByRoleId(roleId);
+                if (userIds != null && !userIds.isEmpty()) {
+                    receiverIds.addAll(userIds);
+                }
+            }
+
+            for (Long receiverId : receiverIds) {
                 notificationService.sendNotification(
                         currentUserId,
-                        manager.getId(),
+                        receiverId,
                         "需求重新提交",
                         String.format("需求【%s】已修改并重新提交审核，请再次处理。", existDemand.getTitle()),
                         1,
@@ -474,7 +490,6 @@ public class DemandService {
                 );
             }
         }
-        
         log.info("需求重新提交成功: demandId={}", id);
     }
 

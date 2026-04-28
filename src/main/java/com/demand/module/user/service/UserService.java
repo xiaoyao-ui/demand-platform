@@ -8,6 +8,7 @@ import com.demand.module.user.dto.UserRegisterDTO;
 import com.demand.module.user.dto.UserCreateDTO;
 import com.demand.module.user.dto.UserUpdateDTO;
 import com.demand.module.user.entity.User;
+import com.demand.module.user.mapper.RoleMapper;
 import com.demand.module.user.mapper.UserMapper;
 import com.demand.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +45,11 @@ public class UserService {
      * 用户数据访问层
      */
     private final UserMapper userMapper;
+
+    /**
+     * 角色数据访问层
+     */
+    private final RoleMapper roleMapper;
 
     /**
      * JWT 工具类，用于生成和解析 Token
@@ -137,12 +143,18 @@ public class UserService {
         user.setEmail(registerDTO.getEmail());
         user.setPhone(registerDTO.getPhone());
         user.setRealName(registerDTO.getRealName());
-        user.setRole(1);  // 默认普通用户
         user.setStatus(1); // 默认启用
         user.setCreateTime(LocalDateTime.now());
         user.setUpdateTime(LocalDateTime.now());
 
         userMapper.insert(user);
+
+        // 7. 设置用户角色 默认普通用户
+        List<Long> defaultRoleIds = getRoleIdsByKeys(List.of("USER"));
+        if (!defaultRoleIds.isEmpty()) {
+            userMapper.insertUserRoles(user.getId(), defaultRoleIds);
+        }
+
         log.info("用户注册成功: userId={}, username={}", user.getId(), user.getUsername());
     }
 
@@ -183,15 +195,19 @@ public class UserService {
             throw new BusinessException("账号已被禁用");
         }
 
+        // 获取多角色列表
+        List<String> roles = roleMapper.selectRoleKeysByUserId(user.getId());
+        // 为空处理
+        String rolesStr = roles.isEmpty() ? "USER" : String.join(",", roles);
         // 4. 生成 JWT Token
-        String token = jwtUtil.generateToken(user.getId(), user.getUsername(), user.getRole());
+        String token = jwtUtil.generateToken(user.getId(), user.getUsername(), rolesStr);
 
         Map<String, Object> result = new HashMap<>();
         result.put("token", token);
         user.setPassword(null); // 清除密码字段
         result.put("user", user);
 
-        log.info("用户登录成功: userId={}, username={}, role={}", user.getId(), user.getUsername(), user.getRole());
+        log.info("用户登录成功: userId={}, username={}, roles={}", user.getId(), user.getUsername(), rolesStr);
         return result;
     }
 
@@ -230,15 +246,20 @@ public class UserService {
             throw new BusinessException("账号已被禁用");
         }
 
+        // 获取角色列表
+        List<String> roles = roleMapper.selectRoleKeysByUserId(user.getId());
+        // 判空处理
+        String rolesStr = roles.isEmpty() ? "USER" : String.join(",", roles);
+
         // 4. 生成 JWT Token
-        String token = jwtUtil.generateToken(user.getId(), user.getUsername(), user.getRole());
+        String token = jwtUtil.generateToken(user.getId(), user.getUsername(), rolesStr);
 
         Map<String, Object> result = new HashMap<>();
         result.put("token", token);
         user.setPassword(null);
         result.put("user", user);
 
-        log.info("邮箱登录成功: userId={}, email={}, role={}", user.getId(), user.getEmail(), user.getRole());
+        log.info("邮箱登录成功: userId={}, email={}, roles={}", user.getId(), user.getEmail(), rolesStr);
         return result;
     }
 
@@ -277,15 +298,20 @@ public class UserService {
             throw new BusinessException("账号已被禁用");
         }
 
+        // 获取角色列表
+        List<String> roles = roleMapper.selectRoleKeysByUserId(user.getId());
+        // 判空处理
+        String rolesStr = roles.isEmpty() ? "USER" : String.join(",", roles);
+
         // 4. 生成 JWT Token
-        String token = jwtUtil.generateToken(user.getId(), user.getUsername(), user.getRole());
+        String token = jwtUtil.generateToken(user.getId(), user.getUsername(), rolesStr);
 
         Map<String, Object> result = new HashMap<>();
         result.put("token", token);
         user.setPassword(null);
         result.put("user", user);
 
-        log.info("手机登录成功: userId={}, phone={}, role={}", user.getId(), user.getPhone(), user.getRole());
+        log.info("手机登录成功: userId={}, phone={}, roles={}", user.getId(), user.getPhone(), rolesStr);
         return result;
     }
 
@@ -315,8 +341,7 @@ public class UserService {
         
         // 获取当前用户信息，用于判断是否有权限查看原文
         Long currentUserId = permissionService.getCurrentUserId();
-        Integer currentRole = permissionService.getCurrentUserRole();
-        fillSensitiveInfo(user, currentUserId, currentRole); // 填充原文字段
+        fillSensitiveInfo(user, currentUserId); // 填充原文字段
         
         return user;
     }
@@ -334,11 +359,10 @@ public class UserService {
         log.debug("查询所有用户");
         List<User> users = userMapper.selectAllUsers();
         Long currentUserId = permissionService.getCurrentUserId();
-        Integer currentRole = permissionService.getCurrentUserRole();
 
         users.forEach(u -> {
             u.setPassword(null);
-            fillSensitiveInfo(u, currentUserId, currentRole); // 填充原文字段
+            fillSensitiveInfo(u, currentUserId); // 填充原文字段
         });
         return users;
     }
@@ -381,7 +405,7 @@ public class UserService {
      * @throws BusinessException 当用户名或邮箱已存在时抛出
      */
     public void createUser(UserCreateDTO createDTO) {
-        log.info("管理员创建用户: username={}, role={}", createDTO.getUsername(), createDTO.getRole());
+        log.info("管理员创建用户: username={}", createDTO.getUsername());
 
         // 1. 检查用户名是否已存在
         User existUser = userMapper.findByUsername(createDTO.getUsername());
@@ -399,19 +423,41 @@ public class UserService {
             }
         }
 
-        // 3. 创建用户对象
+        // 3. 检查手机号码是否已存在
+        if (createDTO.getPhone() != null && !createDTO.getPhone().isEmpty()) {
+            User existPhone = userMapper.findByPhone(createDTO.getPhone());
+            if (existPhone != null) {
+                log.warn("创建用户失败，手机号码已存在: {}", createDTO.getPhone());
+                throw new BusinessException("手机号码已存在");
+            }
+        }
+
+        // 4. 创建用户对象
         User user = new User();
         user.setUsername(createDTO.getUsername());
         user.setPassword(passwordEncoder.encode(createDTO.getPassword()));
         user.setRealName(createDTO.getRealName());
         user.setEmail(createDTO.getEmail());
         user.setPhone(createDTO.getPhone());
-        user.setRole(createDTO.getRole());
         user.setStatus(1); // 默认启用
         user.setCreateTime(LocalDateTime.now());
         user.setUpdateTime(LocalDateTime.now());
 
         userMapper.insert(user);
+
+        // 5. 设置用户角色
+        if (createDTO.getRoleCodes() != null && !createDTO.getRoleCodes().isEmpty()) {
+            List<Long> roleIds = getRoleIdsByCodes(createDTO.getRoleCodes());
+            if (!roleIds.isEmpty()) {
+                userMapper.insertUserRoles(user.getId(), roleIds);
+            }
+        } else {
+            List<Long> defaultRoleIds = getRoleIdsByKeys(List.of("USER"));
+            if (!defaultRoleIds.isEmpty()) {
+                userMapper.insertUserRoles(user.getId(), defaultRoleIds);
+            }
+        }
+
         log.info("用户创建成功: userId={}, username={}", user.getId(), user.getUsername());
     }
 
@@ -444,6 +490,15 @@ public class UserService {
             }
         }
 
+        // 检查手机号码是否被其他用户使用
+        if (updateDTO.getPhone() != null && !updateDTO.getPhone().isEmpty()) {
+            User existPhone = userMapper.findByPhone(updateDTO.getPhone());
+            if (existPhone != null && !existPhone.getId().equals(id)) {
+                log.warn("更新用户失败，手机号码已被其他用户使用: {}", updateDTO.getPhone());
+                throw new BusinessException("手机号码已被其他用户使用");
+            }
+        }
+
         // 更新字段
         if (updateDTO.getRealName() != null) {
             user.setRealName(updateDTO.getRealName());
@@ -454,9 +509,6 @@ public class UserService {
         if (updateDTO.getPhone() != null) {
             user.setPhone(updateDTO.getPhone());
         }
-        if (updateDTO.getRole() != null) {
-            user.setRole(updateDTO.getRole());
-        }
         
         user.setUpdateTime(LocalDateTime.now());
         userMapper.update(user);
@@ -465,26 +517,22 @@ public class UserService {
     }
 
     /**
-     * 更新用户角色
-     * <p>
-     * 快速修改用户角色的专用方法，例如将普通用户提升为项目经理。
-     * </p>
-     *
-     * @param id   用户 ID
-     * @param role 新角色编码（0-只读，1-普通，2-管理员，3-项目经理）
-     * @throws BusinessException 当用户不存在时抛出
+     * 分配用户角色
      */
-    public void updateUserRole(Long id, Integer role) {
-        User user = userMapper.findById(id);
+    public void assignRolesToUser(Long userId, List<Integer> roleCodes) {
+        User user = userMapper.findById(userId);
         if (user == null) {
             throw new BusinessException("用户不存在");
         }
-        
-        user.setRole(role);
-        user.setUpdateTime(LocalDateTime.now());
-        userMapper.updateRole(id, role);
-        
-        log.info("用户角色更新成功: userId={}, newRole={}", id, role);
+
+        userMapper.deleteUserRoles(userId);
+
+        List<Long> roleIds = getRoleIdsByCodes(roleCodes);
+        if (!roleIds.isEmpty()) {
+            userMapper.insertUserRoles(userId, roleIds);
+        }
+
+        log.info("用户角色分配成功: userId={}, roleCodes={}", userId, roleCodes);
     }
 
     /**
@@ -633,13 +681,13 @@ public class UserService {
      *
      * @param user          用户对象
      * @param currentUserId 当前登录用户 ID
-     * @param currentRole   当前登录用户角色
      */
-    private void fillSensitiveInfo(User user, Long currentUserId, Integer currentRole) {
+    private void fillSensitiveInfo(User user, Long currentUserId) {
         if (user == null) return;
 
-        // 管理员(role=2) 或 查看本人信息，才返回原文
-        boolean hasPermission = currentRole == 2 || user.getId().equals(currentUserId);
+        // 超级管理员 或 查看本人信息，才返回原文
+        List<String> currentUserRoles = roleMapper.selectRoleKeysByUserId(currentUserId);
+        boolean hasPermission = currentUserRoles.contains("SUPER_ADMIN") || user.getId().equals(currentUserId);
 
         if (hasPermission) {
             user.setRealPhone(user.getPhone());
@@ -648,5 +696,29 @@ public class UserService {
             user.setRealPhone(null);
             user.setRealEmail(null);
         }
+    }
+
+    private List<Long> getRoleIdsByKeys(List<String> roleKeys) {
+        if (roleKeys == null || roleKeys.isEmpty()) {
+            return List.of();
+        }
+        return roleMapper.selectRoleIdsByKeys(roleKeys);
+    }
+
+    private List<Long> getRoleIdsByCodes(List<Integer> roleCodes) {
+        if (roleCodes == null || roleCodes.isEmpty()) {
+            return List.of();
+        }
+        return roleMapper.selectRoleIdsByCodes(roleCodes);
+    }
+
+    /**
+     * 获取用户角色列表
+     */
+    public List<String> getUserRoles(Long userId) {
+        log.info("正在查询用户 ID: {} 的角色列表", userId);
+        List<String> roles = roleMapper.selectRoleKeysByUserId(userId);
+        log.info("查询到的角色为: {}", roles);
+        return roles;
     }
 }

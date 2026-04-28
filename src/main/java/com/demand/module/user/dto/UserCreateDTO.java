@@ -6,6 +6,8 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 
+import java.util.List;
+
 /**
  * 用户创建 DTO
  */
@@ -27,6 +29,5 @@ public class UserCreateDTO {
     @Pattern(regexp = "^1[3-9]\\d{9}$", message = "手机号格式不正确")
     private String phone;
 
-    @NotNull(message = "角色不能为空")
-    private Integer role;
+    private List<Integer> roleCodes;
 }

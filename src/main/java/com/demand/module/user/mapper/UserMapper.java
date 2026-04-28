@@ -31,11 +31,6 @@ public interface UserMapper {
     User findByPhone(String phone);
 
     /**
-     * 根据角色查询用户列表
-     */
-    List<User> findByRole(Integer role);
-
-    /**
      * 查询所有用户
      * @return 用户列表
      */
@@ -49,12 +44,17 @@ public interface UserMapper {
     /**
      * 更新用户信息
      */
-    int update(User user);
+    void update(User user);
 
     /**
-     * 更新用户角色
+     * 插入用户角色
      */
-    int updateRole(@Param("id") Long id, @Param("role") Integer role);
+    void insertUserRoles(@Param("userId") Long userId, @Param("roleIds") List<Long> roleIds);
+
+    /**
+     * 删除用户角色
+     */
+    void deleteUserRoles(@Param("userId") Long userId);
 
     /**
      * 更新用户状态

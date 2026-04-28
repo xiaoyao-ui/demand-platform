@@ -82,30 +82,13 @@ public class User {
     
     /**
      * 邮箱原文（仅管理员或本人可见）
-     * <p>
-     * 由 {@link UserService#fillSensitiveInfo} 根据权限填充
-     * </p>
      */
     private String realEmail;
 
     /**
      * 手机号原文（仅管理员或本人可见）
-     * <p>
-     * 由 {@link UserService#fillSensitiveInfo} 根据权限填充
-     * </p>
      */
     private String realPhone;
-    
-    /**
-     * 角色编码
-     * <ul>
-     *   <li>0 - 只读用户</li>
-     *   <li>1 - 普通用户</li>
-     *   <li>2 - 管理员</li>
-     *   <li>3 - 项目经理</li>
-     * </ul>
-     */
-    private Integer role;
 
     /**
      * 账号状态

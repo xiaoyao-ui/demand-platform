@@ -2,6 +2,7 @@ package com.demand.util;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -129,24 +130,20 @@ public class JwtUtil {
      *
      * @param userId   用户 ID
      * @param username 用户名
-     * @param role     角色编码
+     * @param roles    角色字符串，用逗号分隔，如 "USER,DEVELOPER"
      * @return 生成的 JWT Token 字符串
      */
-    public String generateToken(Long userId, String username, Integer role) {
+    public String generateToken(Long userId, String username, String roles) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("userId", userId);
         claims.put("username", username);
-        claims.put("role", role);
-
-        Date now = new Date();
-        Date expiryDate = new Date(now.getTime() + expiration);
+        claims.put("roles", roles);
 
         return Jwts.builder()
-                .claims(claims)
-                .subject(username)
-                .issuedAt(now)
-                .expiration(expiryDate)
-                .signWith(getSigningKey())
+                .setClaims(claims)
+                .setIssuedAt(new Date())
+                .setExpiration(new Date(System.currentTimeMillis() + expiration))
+                .signWith(SignatureAlgorithm.HS256, secret)
                 .compact();
     }
 
@@ -177,7 +174,7 @@ public class JwtUtil {
      */
     public Long getUserIdFromToken(String token) {
         Claims claims = parseToken(token);
-        return claims.get("userId", Long.class);
+        return claims != null ? ((Number) claims.get("id")).longValue() : null;
     }
 
     /**
@@ -198,7 +195,8 @@ public class JwtUtil {
      * @return 用户名，如果 Token 无效则返回 null
      */
     public String getUsernameFromToken(String token) {
-        return parseToken(token).getSubject();
+        Claims claims = getClaimsFromToken(token);
+        return claims != null ? (String) claims.get("username") : null;
     }
 
     /**
@@ -221,6 +219,33 @@ public class JwtUtil {
             return true;
         } catch (Exception e) {
             return false;
+        }
+    }
+
+    /**
+     * 从 Token 中获取角色字符串
+     */
+    public String getRolesFromToken(String token) {
+        Claims claims = getClaimsFromToken(token);
+        return claims != null ? (String) claims.get("roles") : null;
+    }
+
+    /**
+     * 从 Token 中获取 Claims 对象
+     */
+    private Claims getClaimsFromToken(String token) {
+        try {
+            // 1. 将字符串密钥转换为 SecretKey 对象
+            SecretKey key = Keys.hmacShaKeyFor(secret.getBytes());
+
+            // 2. 使用新版 parserBuilder 进行解析
+            return Jwts.parser()
+                    .verifyWith(key) // 新版使用 verifyWith
+                    .build()
+                    .parseSignedClaims(token) // 新版使用 parseSignedClaims
+                    .getPayload(); // 获取 Payload (即 Claims)
+        } catch (Exception e) {
+            return null;
         }
     }
 }

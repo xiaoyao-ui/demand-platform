@@ -69,10 +69,7 @@ public class CommentController {
      * <p>
      * <b>权限要求</b>：
      * <ul>
-     *   <li>普通用户（role=1）：可以评论</li>
-     *   <li>项目经理（role=3）：可以评论</li>
-     *   <li>管理员（role=2）：可以评论</li>
-     *   <li>只读用户（role=0）：无权评论</li>
+     *   <li>只读用户（role=7）：无权评论</li>
      * </ul>
      * </p>
      * 
@@ -90,7 +87,7 @@ public class CommentController {
      */
     @Operation(summary = "添加评论", description = "为需求添加评论或回复")
     @PostMapping
-    @RequirePermission(roles = {1, 2, 3})
+    @RequirePermission(roles = {1, 2, 3, 4, 5, 6})
     public Result<Comment> addComment(@RequestBody Comment comment) {
         // 1. 获取当前登录用户 ID
         Long currentUserId = permissionService.getCurrentUserId();
