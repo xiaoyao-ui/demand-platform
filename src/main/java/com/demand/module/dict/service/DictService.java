@@ -115,8 +115,73 @@ public class DictService {
      * @param code 字典编码
      * @return 字典对象，如果不存在则返回 null
      */
-    public Dict getDictByTypeAndCode(String type, Integer code) {
+    public Dict getDictByTypeAndCode(String type, String code) {
         return dictMapper.findByTypeAndCode(type, code);
+    }
+
+    /**
+     * 获取字典项的显示名称
+     * <p>
+     * 便捷方法，直接返回字典项的 name 字段。
+     * 如果字典项不存在，返回原始 code 值。
+     * </p>
+     * 
+     * <p>
+     * <b>使用示例</b>：
+     * <ul>
+     *   <li>{@code getDictName("demand_status", "APPROVED")} → "审批通过"}</li>
+     *   <li>{@code getDictName("priority", "HIGH")} → "高"}</li>
+     *   <li>{@code getDictName("unknown", "TEST")} → "TEST"（未找到时返回原值）}</li>
+     * </ul>
+     * </p>
+     *
+     * @param type 字典类型
+     * @param code 字典编码
+     * @return 字典名称，如果不存在则返回 code 本身
+     */
+    public String getDictName(String type, String code) {
+        if (code == null) {
+            return "未知";
+        }
+        
+        Dict dict = getDictByTypeAndCode(type, code);
+        return dict != null ? dict.getName() : code;
+    }
+
+    /**
+     * 批量获取字典项的显示名称
+     * <p>
+     * 适用于需要转换多个状态的场景，减少数据库查询次数。
+     * 先从缓存中获取整个字典列表，然后在内存中匹配。
+     * </p>
+     *
+     * @param type 字典类型
+     * @param codes 字典编码列表
+     * @return Map<code, name> 映射关系
+     */
+    public java.util.Map<String, String> batchGetDictNames(String type, java.util.List<String> codes) {
+        java.util.Map<String, String> result = new java.util.HashMap<>();
+        
+        if (codes == null || codes.isEmpty()) {
+            return result;
+        }
+        
+        // 从缓存中获取整个字典列表
+        List<Dict> dictList = getDictByType(type);
+        
+        // 构建 code -> name 映射
+        java.util.Map<String, String> dictMap = dictList.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        Dict::getCode,
+                        Dict::getName
+                ));
+        
+        // 批量转换
+        for (String code : codes) {
+            result.put(code, dictMap.getOrDefault(code, code));
+        }
+        
+        return result;
     }
 
     /**

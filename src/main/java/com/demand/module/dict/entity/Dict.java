@@ -48,14 +48,14 @@ public class Dict {
     /**
      * 字典编码
      * <p>
-     * 实际业务中使用的值，例如：
+     * 实际业务中使用的值，支持数字和字符串两种类型：
      * <ul>
-     *   <li>需求类型：0、1、2</li>
-     *   <li>优先级：0、1、2、3</li>
+     *   <li>数字类型：需求类型（0、1、2）、优先级（0、1、2、3）</li>
+     *   <li>字符串类型：需求状态（DRAFT、APPROVED、REJECTED）</li>
      * </ul>
      * </p>
      */
-    private Integer code;
+    private String code;
 
     /**
      * 字典名称

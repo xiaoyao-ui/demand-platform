@@ -8,6 +8,7 @@ import com.demand.common.PageResult;
 import com.demand.common.Result;
 import com.demand.config.RateLimit;
 import com.demand.config.RequirePermission;
+import com.demand.module.demand.dto.BatchAssignDTO;
 import com.demand.module.demand.dto.DashboardStats;
 import com.demand.module.demand.dto.DemandExportDTO;
 import com.demand.module.demand.dto.*;
@@ -18,8 +19,8 @@ import com.demand.module.demand.service.DemandActivityService;
 import com.demand.module.demand.service.DemandApprovalService;
 import com.demand.module.demand.service.DemandAssignmentService;
 import com.demand.module.demand.service.DemandService;
+import com.demand.module.dict.service.DictService;
 import com.demand.module.user.service.PermissionService;
-import com.itextpdf.html2pdf.HtmlConverter;
 import com.itextpdf.io.font.PdfEncodings;
 import com.itextpdf.io.font.constants.StandardFonts;
 import com.itextpdf.kernel.colors.ColorConstants;
@@ -35,7 +36,6 @@ import com.itextpdf.layout.borders.SolidBorder;
 import com.itextpdf.layout.element.Cell;
 import com.itextpdf.layout.element.Paragraph;
 import com.itextpdf.layout.element.Table;
-import com.itextpdf.layout.font.FontProvider;
 import com.itextpdf.layout.properties.TextAlignment;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -43,7 +43,6 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
-import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.BorderStyle;
 import org.apache.poi.ss.usermodel.HorizontalAlignment;
@@ -51,18 +50,19 @@ import org.apache.poi.ss.usermodel.IndexedColors;
 import org.apache.poi.ss.usermodel.VerticalAlignment;
 import org.springframework.web.bind.annotation.*;
 
-import java.io.ByteArrayInputStream;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * 需求业务交互层
+ * 需求管理控制器
+ * <p>
+ * 提供需求的增删改查、审批、分配、导出等功能接口。
+ * </p>
  */
 @Tag(name = "需求管理", description = "需求的增删改查和状态管理接口")
 @RestController
@@ -75,17 +75,23 @@ public class DemandController {
     private final DemandAssignmentService assignmentService;
     private final PermissionService permissionService;
     private final DemandActivityService demandActivityService;
+    private final DictService dictService;
 
+    /**
+     * 创建需求
+     */
     @Operation(summary = "创建需求", description = "创建新的需求记录（只读用户不可用）")
     @PostMapping
     @RequirePermission(roles = {1, 2, 3, 4, 5, 6})
     public Result<?> createDemand(@Valid @RequestBody DemandCreateDTO createDTO) {
         Long currentUserId = permissionService.getCurrentUserId();
-        createDTO.setProposerId(currentUserId);
-        demandService.createDemand(createDTO);
+        demandService.createDemand(createDTO, currentUserId);
         return Result.success();
     }
 
+    /**
+     * 查询需求详情
+     */
     @Operation(summary = "查询需求详情", description = "根据需求ID查询详细信息（所有角色可访问）")
     @GetMapping("/{id}")
     public Result<Demand> getDemandById(@Parameter(description = "需求ID") @PathVariable Long id) {
@@ -93,26 +99,31 @@ public class DemandController {
         return Result.success(demand);
     }
 
+    /**
+     * 更新需求
+     */
     @Operation(summary = "更新需求", description = "更新需求信息和状态（提出人、产品经理、项目经理、超级管理员可操作）")
     @PutMapping("/{id}")
     @RequirePermission(roles = {1, 2, 3, 4}, requireOwner = true, resourceIdParam = "id")
-    public Result<?> updateDemand(@Parameter(description = "需求ID") @PathVariable Long id, 
-                                       @Valid @RequestBody DemandCreateDTO updateDTO) {
+    public Result<?> updateDemand(@Parameter(description = "需求ID") @PathVariable Long id,
+                                  @Valid @RequestBody DemandCreateDTO updateDTO) {
         Long operatorId = permissionService.getCurrentUserId();
-        
+
         Demand demand = new Demand();
         demand.setTitle(updateDTO.getTitle());
         demand.setDescription(updateDTO.getDescription());
         demand.setType(updateDTO.getType());
         demand.setPriority(updateDTO.getPriority());
-        demand.setModule(updateDTO.getModule());
-        demand.setExpectedDate(updateDTO.getExpectedDate());
-        demand.setStatus(updateDTO.getStatus());
-        
+        demand.setModuleId(updateDTO.getModuleId());
+        demand.setExpectedEndDate(updateDTO.getExpectedEndDate());
+
         demandService.updateDemand(id, demand, operatorId);
         return Result.success();
     }
 
+    /**
+     * 删除需求
+     */
     @Operation(summary = "删除需求", description = "删除指定需求（提出人或超级管理员可操作）")
     @DeleteMapping("/{id}")
     @RequirePermission(roles = {1, 2}, requireOwner = true, resourceIdParam = "id")
@@ -122,6 +133,9 @@ public class DemandController {
         return Result.success();
     }
 
+    /**
+     * 分页查询需求
+     */
     @Operation(summary = "分页查询需求", description = "根据条件分页查询需求列表（所有角色可访问）")
     @PostMapping("/query")
     public Result<PageResult<Demand>> queryDemands(@RequestBody DemandQueryDTO queryDTO) {
@@ -129,6 +143,9 @@ public class DemandController {
         return Result.success(pageResult);
     }
 
+    /**
+     * 审批需求
+     */
     @Operation(summary = "审批需求", description = "项目经理审批需求（仅项目经理和管理员）")
     @PostMapping("/approve")
     @RequirePermission(roles = {1, 4})
@@ -138,6 +155,9 @@ public class DemandController {
         return Result.success();
     }
 
+    /**
+     * 分配需求
+     */
     @Operation(summary = "分配需求", description = "分配需求给负责人（仅项目经理和管理员）")
     @PostMapping("/assign")
     @RequirePermission(roles = {1, 4})
@@ -147,15 +167,21 @@ public class DemandController {
         return Result.success();
     }
 
+    /**
+     * 查询待审批需求
+     */
     @Operation(summary = "查询待审批需求", description = "查询所有待审批的需求（仅项目经理、产品经理和超级管理员）")
     @GetMapping("/pending-approval")
     @RequirePermission(roles = {1, 3, 4})
     public Result<PageResult<Demand>> getPendingApprovalDemands(DemandQueryDTO queryDTO) {
-        queryDTO.setStatus(0);
+        queryDTO.setStatus("PENDING_REVIEW");
         PageResult<Demand> pageResult = demandService.queryDemands(queryDTO);
         return Result.success(pageResult);
     }
 
+    /**
+     * 查询状态历史
+     */
     @Operation(summary = "查询状态历史", description = "查询需求的状态变更历史记录（所有角色可访问）")
     @GetMapping("/{id}/status-history")
     public Result<List<DemandStatusHistory>> getStatusHistory(@Parameter(description = "需求ID") @PathVariable Long id) {
@@ -163,6 +189,9 @@ public class DemandController {
         return Result.success(history);
     }
 
+    /**
+     * 获取仪表盘统计
+     */
     @Operation(summary = "获取仪表盘统计", description = "获取需求统计、类型分布、趋势等数据")
     @GetMapping("/dashboard/stats")
     public Result<DashboardStats> getDashboardStats() {
@@ -170,6 +199,9 @@ public class DemandController {
         return Result.success(stats);
     }
 
+    /**
+     * 提交需求审核
+     */
     @Operation(summary = "提交需求审核", description = "将草稿状态的需求提交审核")
     @PostMapping("/{id}/submit")
     @RequirePermission(roles = {2, 3, 5, 6}, requireOwner = true, resourceIdParam = "id")
@@ -179,6 +211,9 @@ public class DemandController {
         return Result.success();
     }
 
+    /**
+     * 撤回需求
+     */
     @Operation(summary = "撤回需求", description = "提出人撤回待审批的需求")
     @PostMapping("/{id}/withdraw")
     @RequirePermission(roles = {2, 3, 5, 6}, requireOwner = true, resourceIdParam = "id")
@@ -190,52 +225,89 @@ public class DemandController {
         return Result.success();
     }
 
+    /**
+     * 获取需求操作动态
+     */
     @Operation(summary = "获取需求操作动态", description = "查看需求变更审计时间轴")
     @GetMapping("/{id}/activities")
     public Result<List<DemandActivity>> getActivities(@PathVariable Long id) {
         return Result.success(demandActivityService.getActivitiesByDemandId(id));
     }
 
+    /**
+     * 批量分配负责人
+     */
     @Operation(summary = "批量分配负责人", description = "批量将需求分配给指定负责人")
     @PutMapping("/batch-assign")
-    public Result<?> batchAssign(@RequestBody BatchAssignDTO dto, HttpServletRequest request) {
-        Long operatorId = (Long) request.getAttribute("userId");
+    @RequirePermission(roles = {1, 4})
+    public Result<?> batchAssign(@Valid @RequestBody BatchAssignDTO dto) {
+        Long operatorId = permissionService.getCurrentUserId();
         demandService.batchAssign(dto.getIds(), dto.getAssigneeId(), operatorId);
         return Result.success("批量分配成功");
     }
 
-    @Data
-    static class BatchAssignDTO {
-        private List<Long> ids;
-        private Long assigneeId;
+    /**
+     * 获取项目统计
+     */
+    @Operation(summary = "获取项目统计", description = "获取项目下的需求数量、完成率等统计数据")
+    @GetMapping("/project/{projectId}/stats")
+    public Result<com.demand.module.demand.dto.ProjectStatsDTO> getProjectStats(
+            @Parameter(description = "项目ID") @PathVariable Long projectId) {
+        com.demand.module.demand.dto.ProjectStatsDTO stats = demandService.getProjectStats(projectId);
+        return Result.success(stats);
     }
 
+    /**
+     * 获取迭代看板
+     */
+    @Operation(summary = "获取迭代看板", description = "获取迭代内的需求分布、进度追踪等数据")
+    @GetMapping("/iteration/{iterationId}/kanban")
+    public Result<com.demand.module.demand.dto.IterationKanbanDTO> getIterationKanban(
+            @Parameter(description = "迭代ID") @PathVariable Long iterationId) {
+        com.demand.module.demand.dto.IterationKanbanDTO kanban = demandService.getIterationKanban(iterationId);
+        return Result.success(kanban);
+    }
+
+    /**
+     * 导出需求列表 Excel
+     */
     @Operation(summary = "导出需求列表 Excel", description = "根据查询条件导出需求数据为 Excel 文件")
     @RateLimit(timeWindow = 60, maxRequests = 3, keyPrefix = "export_limit")
     @GetMapping("/export/excel")
     public void exportExcel(DemandQueryDTO queryDTO, HttpServletResponse response) {
         try {
-            // 查询所有数据
+            // 查询所有数据（限制最大导出数量）
             queryDTO.setPageNum(1);
             queryDTO.setPageSize(10000);
-            var pageResult = demandService.queryDemands(queryDTO);
+            PageResult<Demand> pageResult = demandService.queryDemands(queryDTO);
             List<Demand> demands = pageResult.getList();
 
+            // 转换为导出 DTO
             List<DemandExportDTO> exportList = demands.stream().map(demand -> {
                 DemandExportDTO dto = new DemandExportDTO();
                 dto.setId(demand.getId());
                 dto.setTitle(demand.getTitle());
-                dto.setType(getTypeLabel(demand.getType()));
-                dto.setPriority(getPriorityLabel(demand.getPriority()));
-                dto.setStatus(getStatusLabel(demand.getStatus()));
-                dto.setProposerName(demand.getProposerName());
+                
+                // 使用字典模块进行状态转义
+                dto.setType(dictService.getDictName("demand_type", demand.getType()));
+                dto.setPriority(dictService.getDictName("priority", demand.getPriority()));
+                dto.setStatus(dictService.getDictName("demand_status", demand.getStatus()));
+                
+                // 设置人员信息
+                dto.setProposerName(demand.getCreatorName());
                 dto.setAssigneeName(demand.getAssigneeName());
-                dto.setModule(demand.getModule());
+                
+                // 设置模块名称
+                dto.setModuleName(demand.getModuleName());
+                
+                // 设置时间
                 dto.setCreateTime(demand.getCreateTime());
                 dto.setUpdateTime(demand.getUpdateTime());
+                
                 return dto;
             }).collect(Collectors.toList());
 
+            // 设置响应头
             response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
             response.setCharacterEncoding("utf-8");
             String fileName = URLEncoder.encode("需求列表_" + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd")), StandardCharsets.UTF_8)
@@ -275,6 +347,7 @@ public class DemandController {
             HorizontalCellStyleStrategy horizontalCellStyleStrategy = 
                     new HorizontalCellStyleStrategy(headWriteCellStyle, contentWriteCellStyle);
 
+            // 4. 执行导出
             EasyExcel.write(response.getOutputStream(), DemandExportDTO.class)
                     .registerWriteHandler(horizontalCellStyleStrategy)
                     .registerWriteHandler(new PriorityAndStatusColorHandler())
@@ -282,7 +355,7 @@ public class DemandController {
                     .doWrite(exportList);
 
         } catch (Exception e) {
-            throw new RuntimeException("导出 Excel 失败", e);
+            throw new RuntimeException("导出 Excel 失败: " + e.getMessage(), e);
         }
     }
 
@@ -387,6 +460,9 @@ public class DemandController {
         }
     }
 
+    /**
+     * 导出统计报表 PDF
+     */
     @Operation(summary = "导出统计报表 PDF", description = "使用原生 API 绘制专业 PDF 报表")
     @RateLimit(timeWindow = 60, maxRequests = 3, keyPrefix = "export_limit")
     @GetMapping("/export/pdf")
@@ -651,41 +727,4 @@ public class DemandController {
         return cell;
     }
 
-    // 类型转义
-    private String getTypeLabel(Integer type) {
-        if (type == null) return "未知";
-        return switch (type) {
-            case 0 -> "功能需求";
-            case 1 -> "优化需求";
-            case 2 -> "Bug修复";
-            default -> "其他";
-        };
-    }
-
-    // 优先级转义
-    private String getPriorityLabel(Integer priority) {
-        if (priority == null) return "未知";
-        return switch (priority) {
-            case 0 -> "低";
-            case 1 -> "中";
-            case 2 -> "高";
-            case 3 -> "紧急";
-            default -> "未知";
-        };
-    }
-
-    // 状态转义
-    private String getStatusLabel(Integer status) {
-        if (status == null) return "未知";
-        return switch (status) {
-            case 0 -> "待审批";
-            case 1 -> "审批通过";
-            case 2 -> "开发中";
-            case 3 -> "测试中";
-            case 4 -> "已完成";
-            case 5 -> "已拒绝";
-            case 6 -> "草稿";
-            default -> "未知";
-        };
-    }
 }

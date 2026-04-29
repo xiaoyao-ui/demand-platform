@@ -61,18 +61,18 @@ public class DemandStatusHistory {
     /**
      * 变更前状态
      * <p>
-     * 状态变更前的旧状态码，例如：6（草稿）
+     * 状态变更前的旧状态码，例如：DRAFT（草稿）、PENDING_REVIEW（待审批）
      * </p>
      */
-    private Integer oldStatus;
+    private String oldStatus;
 
     /**
      * 变更后状态
      * <p>
-     * 状态变更后的新状态码，例如：0（待审批）
+     * 状态变更后的新状态码，例如：APPROVED（审批通过）、IN_DEVELOPMENT（开发中）
      * </p>
      */
-    private Integer newStatus;
+    private String newStatus;
 
     /**
      * 变更原因/备注

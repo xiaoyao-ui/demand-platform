@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.demand.module.demand.mapper.DemandTagRelationMapper">
+
+    <!-- 批量新增需求标签关联关系 -->
+    <insert id="batchInsert">
+        INSERT INTO demand_tag_relation (demand_id, tag_id) VALUES
+        <foreach collection="relations" item="relation" separator=",">
+            (#{relation.demandId}, #{relation.tagId})
+        </foreach>
+    </insert>
+
+    <!-- 根据需求ID删除需求标签关联关系 -->
+    <delete id="deleteByDemandId">
+        DELETE FROM demand_tag_relation WHERE demand_id = #{demandId}
+    </delete>
+
+</mapper>

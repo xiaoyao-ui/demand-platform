@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.demand.module.demand.mapper.DemandDependencyMapper">
+
+    <!-- 结果映射 -->
+    <resultMap id="DependencyResultMap" type="com.demand.module.demand.entity.DemandDependency">
+        <id property="id" column="id"/>
+        <result property="demandId" column="demand_id"/>
+        <result property="dependsOnId" column="depends_on_id"/>
+        <result property="dependencyType" column="dependency_type"/>
+        <result property="createTime" column="create_time"/>
+        <result property="dependsOnTitle" column="depends_on_title"/>
+        <result property="dependsOnStatus" column="depends_on_status"/>
+    </resultMap>
+
+    <!-- 查询指定需求下的所有依赖关系 -->
+    <select id="selectDependenciesByDemandId" resultMap="DependencyResultMap">
+        SELECT dd.*, d.title AS depends_on_title, d.status AS depends_on_status
+        FROM demand_dependency dd
+        LEFT JOIN demand d ON dd.depends_on_id = d.id
+        WHERE dd.demand_id = #{demandId}
+        ORDER BY dd.create_time DESC
+    </select>
+
+    <!-- 查询指定需求所依赖的其它需求 -->
+    <select id="selectDependentDemands" resultMap="DependencyResultMap">
+        SELECT dd.*, d.title AS depends_on_title, d.status AS depends_on_status
+        FROM demand_dependency dd
+        LEFT JOIN demand d ON dd.demand_id = d.id
+        WHERE dd.depends_on_id = #{demandId}
+        ORDER BY dd.create_time DESC
+    </select>
+
+</mapper>

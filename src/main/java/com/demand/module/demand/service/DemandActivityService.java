@@ -5,7 +5,9 @@ import com.demand.module.demand.mapper.DemandActivityMapper;
 import com.demand.module.user.entity.User;
 import com.demand.module.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+
 import java.util.List;
 
 /**
@@ -29,18 +31,12 @@ import java.util.List;
  *   <li>故障排查：定位需求状态变更的原因</li>
  * </ul>
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class DemandActivityService {
 
-    /**
-     * 需求动态数据访问层
-     */
     private final DemandActivityMapper activityMapper;
-
-    /**
-     * 用户数据访问层，用于查询操作人头像
-     */
     private final UserMapper userMapper;
 
     /**
@@ -78,6 +74,7 @@ public class DemandActivityService {
         activity.setContent(content);
         activity.setExtraData(extraData);
         activityMapper.insert(activity);
+        log.debug("保存需求动态: demandId={}, actionType={}, operator={}", demandId, actionType, operatorName);
     }
 
     /**
@@ -100,6 +97,7 @@ public class DemandActivityService {
      * @return 动态列表（包含 operatorAvatar 字段）
      */
     public List<DemandActivity> getActivitiesByDemandId(Long demandId) {
+        log.debug("查询需求动态: demandId={}", demandId);
         List<DemandActivity> activities = activityMapper.selectByDemandId(demandId);
         
         // 填充操作人头像
@@ -111,6 +109,7 @@ public class DemandActivityService {
                 }
             }
         }
+        log.debug("查询需求动态完成: demandId={}, count={}", demandId, activities.size());
         return activities;
     }
 }

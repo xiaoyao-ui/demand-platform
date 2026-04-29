@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.demand.module.demand.mapper.DemandTagMapper">
+
+    <!-- 根据需求ID获取需求标签列表 -->
+    <select id="selectTagsByDemandId" resultType="com.demand.module.demand.entity.DemandTag">
+        SELECT t.*
+        FROM demand_tag t
+        INNER JOIN demand_tag_relation r ON t.id = r.tag_id
+        WHERE r.demand_id = #{demandId}
+        ORDER BY t.category, t.name
+    </select>
+
+    <!-- 增加需求标签的使用次数 -->
+    <update id="incrementUseCount">
+        UPDATE demand_tag SET use_count = use_count + 1 WHERE id = #{tagId}
+    </update>
+
+    <!-- 减少需求标签的使用次数 -->
+    <update id="decrementUseCount">
+        UPDATE demand_tag SET use_count = GREATEST(use_count - 1, 0) WHERE id = #{tagId}
+    </update>
+
+</mapper>

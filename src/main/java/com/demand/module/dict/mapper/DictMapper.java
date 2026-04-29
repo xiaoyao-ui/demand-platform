@@ -39,18 +39,19 @@ public interface DictMapper {
     /**
      * 根据类型和编码查询单个字典项
      * <p>
-     * 用于将数字编码转换为中文名称，例如：
+     * 用于将编码转换为中文名称，支持数字和字符串类型：
      * <ul>
-     *   <li>输入：type="priority", code=2 → 输出：name="高"</li>
+     *   <li>输入：type="priority", code="2" → 输出：name="高"</li>
+     *   <li>输入：type="demand_status", code="APPROVED" → 输出：name="审批通过"</li>
      * </ul>
      * </p>
      *
      * @param type 字典类型
-     * @param code 字典编码
+     * @param code 字典编码（String类型，兼容数字和字符串）
      * @return 字典对象，如果不存在则返回 null
      */
     @Select("SELECT * FROM dict WHERE type = #{type} AND code = #{code}")
-    Dict findByTypeAndCode(String type, Integer code);
+    Dict findByTypeAndCode(String type, String code);
 
     /**
      * 查询所有字典类型

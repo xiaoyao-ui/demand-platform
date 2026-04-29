@@ -1,157 +1,190 @@
 package com.demand.module.demand.entity;
 
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 需求实体类
- * <p>
- * 对应数据库 {@code demand} 表，存储系统中的所有需求信息。
- * 支持完整的生命周期管理：草稿 → 待审批 → 审批通过 → 开发中 → 测试中 → 已完成。
- * </p>
- * 
- * <h3>需求状态流转：</h3>
- * <pre>
- * 草稿(6) → 待审批(0) → 审批通过(1) → 开发中(2) → 测试中(3) → 已完成(4)
- *                    ↓
- *                  已拒绝(5) → 重新提交 → 待审批(0)
- * </pre>
- * 
- * <h3>典型数据示例：</h3>
- * <pre>
- * +----+------------------+------------+--------+----------+--------------+-------------+--------------+---------------------+---------------------+
- * | id | title            | type       | priority| status   | proposer_id | assignee_id | approver_id  | module          | expected_date       | actual_date         |
- * +----+------------------+------------+--------+----------+--------------+-------------+--------------+---------------------+---------------------+
- * |  1 | 用户登录功能      | 0          | 2      | 2        |           10 |          20 |           15 | 用户模块          | 2026-05-01 00:00:00 | NULL                |
- * |  2 | 性能优化-首页加载  | 1          | 1      | 4        |           12 |          22 |           15 | 前端模块          | 2026-04-20 00:00:00 | 2026-04-18 15:30:00 |
- * +----+------------------+------------+--------+----------+--------------+-------------+--------------+---------------------+---------------------+
- * </pre>
  */
 @Data
+@TableName("demand")
 public class Demand {
-
     /**
-     * 需求 ID（主键）
+     * 主键
      */
+    @TableId(type = IdType.AUTO)
     private Long id;
 
     /**
      * 需求标题
-     * <p>
-     * 简短概括需求内容，例如："用户登录功能"、"首页性能优化"
-     * </p>
      */
     private String title;
 
     /**
-     * 需求描述
-     * <p>
-     * 详细描述需求的功能、背景、验收标准等。
-     * 支持 Markdown 格式，可包含图片、列表、代码块等。
-     * </p>
+     * 需求详细描述
      */
     private String description;
 
     /**
      * 需求类型
-     * <ul>
-     *   <li>0 - 功能需求</li>
-     *   <li>1 - 优化需求</li>
-     *   <li>2 - Bug修复</li>
-     * </ul>
      */
-    private Integer type;
+    private String type;
 
     /**
-     * 需求优先级
-     * <ul>
-     *   <li>0 - 低</li>
-     *   <li>1 - 中</li>
-     *   <li>2 - 高</li>
-     *   <li>3 - 紧急</li>
-     * </ul>
+     * 优先级
      */
-    private Integer priority;
+    private String priority;
 
     /**
-     * 需求状态
-     * <ul>
-     *   <li>0 - 待审批</li>
-     *   <li>1 - 审批通过</li>
-     *   <li>2 - 开发中</li>
-     *   <li>3 - 测试中</li>
-     *   <li>4 - 已完成</li>
-     *   <li>5 - 已拒绝</li>
-     *   <li>6 - 草稿</li>
-     * </ul>
+     * 状态
      */
-    private Integer status;
+    private String status;
 
     /**
-     * 需求提出人 ID
-     * <p>
-     * 关联到 {@code user} 表，记录谁创建了这个需求
-     * </p>
+     * 所属项目ID
      */
-    private Long proposerId;
+    private Long projectId;
 
     /**
-     * 需求负责人 ID
-     * <p>
-     * 关联到 {@code user} 表，记录谁负责开发这个需求。
-     * 在需求分配时设置。
-     * </p>
+     * 所属模块ID
+     */
+    private Long moduleId;
+
+    /**
+     * 所属迭代ID
+     */
+    private Long iterationId;
+
+    /**
+     * 父需求ID
+     */
+    private Long parentId;
+
+    /**
+     * 提出人ID
+     */
+    private Long creatorId;
+
+    /**
+     * 当前负责人ID
      */
     private Long assigneeId;
 
     /**
-     * 审批人 ID（项目经理）
-     * <p>
-     * 关联到 {@code user} 表，记录谁审批了这个需求
-     * </p>
+     * 评审人/验收人ID
+     */
+    private Long reviewerId;
+
+    /**
+     * 审批人ID
      */
     private Long approverId;
 
     /**
+     * 预估工时
+     */
+    private BigDecimal estimatedHours;
+
+    /**
+     * 实际工时
+     */
+    private BigDecimal actualHours;
+
+    /**
+     * 故事点
+     */
+    private Integer storyPoints;
+
+    /**
+     * 期望开始日期
+     */
+    private LocalDate expectedStartDate;
+
+    /**
+     * 期望完成日期
+     */
+    private LocalDate expectedEndDate;
+
+    /**
+     * 实际开始日期
+     */
+    private LocalDate actualStartDate;
+
+    /**
+     * 实际完成日期
+     */
+    private LocalDate actualEndDate;
+
+    /**
      * 审批时间
-     * <p>
-     * 项目经理执行审批操作的时间
-     * </p>
      */
     private LocalDateTime approveTime;
 
     /**
+     * 开始开发时间
+     */
+    private LocalDateTime startDevelopTime;
+
+    /**
+     * 开始测试时间
+     */
+    private LocalDateTime startTestTime;
+
+    /**
+     * 完成时间
+     */
+    private LocalDateTime completeTime;
+
+    /**
      * 审批意见
-     * <p>
-     * 项目经理填写的审批备注，选填。
-     * 例如："需求描述不够清晰，请补充详细流程图"
-     * </p>
      */
     private String approveComment;
 
     /**
-     * 所属模块
-     * <p>
-     * 标识需求属于哪个功能模块，例如："用户模块"、"订单模块"、"支付模块"
-     * </p>
+     * 驳回原因
      */
-    private String module;
+    private String rejectReason;
 
     /**
-     * 期望完成时间
-     * <p>
-     * 提出人希望需求完成的日期，用于排期参考
-     * </p>
+     * 验收标准
      */
-    private LocalDateTime expectedDate;
+    private String acceptanceCriteria;
 
     /**
-     * 实际完成时间
-     * <p>
-     * 需求状态变为"已完成"时自动记录，用于统计开发效率
-     * </p>
+     * 验收结果
      */
-    private LocalDateTime actualDate;
+    private String acceptanceResult;
+
+    /**
+     * 版本号
+     */
+    private String version;
+
+    /**
+     * 需求来源
+     */
+    private String source;
+
+    /**
+     * 业务价值说明
+     */
+    private String businessValue;
+
+    /**
+     * 技术方案概要
+     */
+    private String technicalSolution;
+
+    /**
+     * 风险说明
+     */
+    private String riskDescription;
 
     /**
      * 创建时间
@@ -159,33 +192,52 @@ public class Demand {
     private LocalDateTime createTime;
 
     /**
-     * 最后修改时间
+     * 更新时间
      */
     private LocalDateTime updateTime;
 
-    // ==================== 以下字段为关联查询结果，非数据库字段 ====================
-
     /**
-     * 提出人姓名
-     * <p>
-     * 通过 LEFT JOIN {@code user} 表获取，用于前端展示
-     * </p>
+     * 删除时间
      */
-    private String proposerName;
+    private LocalDateTime deleteTime;
 
     /**
-     * 负责人姓名
-     * <p>
-     * 通过 LEFT JOIN {@code user} 表获取，用于前端展示
-     * </p>
+     * 创建人名称
+     */
+    private String creatorName;
+
+    /**
+     * 负责人名称
      */
     private String assigneeName;
 
     /**
-     * 审批人姓名
-     * <p>
-     * 通过 LEFT JOIN {@code user} 表获取，用于前端展示
-     * </p>
+     * 评审人名称
+     */
+    private String reviewerName;
+
+    /**
+     * 审批人名称
      */
     private String approverName;
+
+    /**
+     * 项目名称
+     */
+    private String projectName;
+
+    /**
+     * 模块名称
+     */
+    private String moduleName;
+
+    /**
+     * 迭代名称
+     */
+    private String iterationName;
+
+    /**
+     * 标签集合
+     */
+    private List<String> tags;
 }

@@ -6,6 +6,7 @@ import com.demand.module.demand.entity.Demand;
 import com.demand.module.demand.entity.DemandStatusHistory;
 import com.demand.module.demand.mapper.DemandMapper;
 import com.demand.module.demand.mapper.DemandStatusHistoryMapper;
+import com.demand.module.dict.service.DictService;
 import com.demand.module.notification.service.NotificationService;
 import com.demand.module.user.entity.User;
 import com.demand.module.user.mapper.UserMapper;
@@ -26,15 +27,15 @@ import java.time.LocalDateTime;
  * <h3>核心功能：</h3>
  * <ul>
  *   <li><b>审批需求</b>：项目经理对待审批的需求进行审批（通过/拒绝）</li>
- *   <li><b>状态流转</b>：待审批(0) → 审批通过(1) 或 已拒绝(5)</li>
+ *   <li><b>状态流转</b>：PENDING_REVIEW → APPROVED 或 REJECTED</li>
  *   <li><b>审计追踪</b>：记录审批人、审批时间、审批意见到数据库</li>
  *   <li><b>实时通知</b>：审批完成后立即通知需求提出者</li>
  * </ul>
  * 
  * <h3>业务流程：</h3>
  * <ol>
- *   <li>验证需求是否存在且处于"待审批"状态</li>
- *   <li>根据审批结果更新需求状态（通过→1，拒绝→5）</li>
+ *   <li>验证需求是否存在且处于"PENDING_REVIEW"状态</li>
+ *   <li>根据审批结果更新需求状态（通过→APPROVED，拒绝→REJECTED）</li>
  *   <li>记录审批人 ID、审批时间和审批意见</li>
  *   <li>记录状态变更历史（包含审批意见）</li>
  *   <li>记录操作动态（用于时间轴展示）</li>
@@ -43,7 +44,7 @@ import java.time.LocalDateTime;
  * 
  * <h3>审批规则：</h3>
  * <ul>
- *   <li>只有状态为"待审批"(0) 的需求才能被审批</li>
+ *   <li>只有状态为"PENDING_REVIEW"的需求才能被审批</li>
  *   <li>审批通过后，需求可以进入分配阶段</li>
  *   <li>审批拒绝后，提出人可以修改内容并重新提交</li>
  *   <li>审批意见选填，但建议填写具体的审批说明</li>
@@ -54,43 +55,25 @@ import java.time.LocalDateTime;
 @RequiredArgsConstructor
 public class DemandApprovalService {
     
-    /**
-     * 需求数据访问层
-     */
     private final DemandMapper demandMapper;
-
-    /**
-     * 状态历史数据访问层
-     */
     private final DemandStatusHistoryMapper statusHistoryMapper;
-
-    /**
-     * 用户数据访问层
-     */
     private final UserMapper userMapper;
-
-    /**
-     * 通知服务
-     */
     private final NotificationService notificationService;
-
-    /**
-     * 需求动态服务
-     */
     private final DemandActivityService activityService;
+    private final DictService dictService;
     
     /**
      * 审批需求
      * <p>
-     * 项目经理对待审批的需求进行审批，可以选择通过或拒绝。
-     * 审批通过后状态变为"审批通过"(1)，拒绝后变为"已拒绝"(5)。
+     * 项目经理或管理员对待审批的需求进行审批，可以选择通过或拒绝。
+     * 审批通过后状态变为"APPROVED"，拒绝后变为"REJECTED"。
      * </p>
      * 
      * <p>
      * <b>前置条件</b>：
      * <ul>
      *   <li>需求必须存在</li>
-     *   <li>需求状态必须为"待审批"(0)</li>
+     *   <li>需求状态必须为"PENDING_REVIEW"</li>
      *   <li>当前用户必须是项目经理或管理员</li>
      * </ul>
      * </p>
@@ -130,13 +113,13 @@ public class DemandApprovalService {
         }
         
         // 2. 验证状态（只能审批待审批的需求）
-        if (demand.getStatus() != 0) {
+        if (!"PENDING_REVIEW".equals(demand.getStatus())) {
             throw new BusinessException("只能审批待审批状态的需求");
         }
         
-        // 3. 计算新状态（通过→1，拒绝→5）
-        Integer oldStatus = demand.getStatus();
-        Integer newStatus = approveDTO.getApproved() ? 1 : 5;
+        // 3. 计算新状态（通过→APPROVED，拒绝→REJECTED）
+        String oldStatus = demand.getStatus();
+        String newStatus = approveDTO.getApproved() ? "APPROVED" : "REJECTED";
         
         // 4. 更新需求信息
         demand.setStatus(newStatus);
@@ -144,28 +127,40 @@ public class DemandApprovalService {
         demand.setApproveTime(LocalDateTime.now());
         demand.setApproveComment(approveDTO.getComment());
         demand.setUpdateTime(LocalDateTime.now());
-        
         demandMapper.update(demand);
         
         // 5. 记录状态变更历史
         recordStatusChange(approveDTO.getDemandId(), oldStatus, newStatus, approveDTO.getComment(), approverId);
         
-        // 6. 记录操作动态
+        // 6. 获取操作人和状态信息
         User approver = userMapper.findById(approverId);
         String approverName = approver != null ? approver.getRealName() : "系统";
-        String result = approveDTO.getApproved() ? "通过" : "拒绝";
-        activityService.saveActivity(approveDTO.getDemandId(), approverId, approverName,
-                "APPROVE",
-                String.format("审批%s了需求%s", result,
-                        approveDTO.getComment() != null ? "（意见：" + approveDTO.getComment() + "）" : ""),
-                null);
+        String resultText = approveDTO.getApproved() ? "通过" : "拒绝";
+        String statusText = dictService.getDictName("demand_status", newStatus);
         
-        String statusText = approveDTO.getApproved() ? "审批通过" : "已拒绝";
+        // 7. 记录操作动态
+        String activityContent = buildActivityContent(resultText, approveDTO.getComment());
+        activityService.saveActivity(approveDTO.getDemandId(), approverId, approverName, "APPROVE", activityContent, null);
+        
+        // 8. 发送通知给提出者
+        sendNotification(demand, approverId, approverName, approveDTO.getApproved(), statusText, approveDTO.getComment());
+        
         log.info("需求审批完成: demandId={}, status={}, approver={}", 
                 demand.getId(), statusText, approverId);
-        
-        // 7. 发送通知给提出者
-        sendNotification(demand, approverId, approveDTO.getApproved(), approveDTO.getComment());
+    }
+    
+    /**
+     * 构建操作动态内容
+     *
+     * @param resultText 审批结果文本（通过/拒绝）
+     * @param comment    审批意见
+     * @return 操作动态内容
+     */
+    private String buildActivityContent(String resultText, String comment) {
+        if (comment != null && !comment.isEmpty()) {
+            return String.format("审批%s了需求（意见：%s）", resultText, comment);
+        }
+        return String.format("审批%s了需求", resultText);
     }
     
     /**
@@ -180,7 +175,7 @@ public class DemandApprovalService {
      * @param remark     备注（审批意见）
      * @param operatorId 操作人 ID
      */
-    private void recordStatusChange(Long demandId, Integer oldStatus, Integer newStatus, String remark, Long operatorId) {
+    private void recordStatusChange(Long demandId, String oldStatus, String newStatus, String remark, Long operatorId) {
         DemandStatusHistory history = new DemandStatusHistory();
         history.setDemandId(demandId);
         history.setOldStatus(oldStatus);
@@ -196,33 +191,42 @@ public class DemandApprovalService {
      * 发送审批通知
      * <p>
      * 审批完成后，向需求提出者发送通知，告知审批结果和审批意见。
+     * 如果审批人就是提出者，则不发送通知。
      * </p>
      *
-     * @param demand    需求对象
-     * @param approverId 审批人 ID
-     * @param approved  是否通过
-     * @param comment   审批意见
+     * @param demand      需求对象
+     * @param approverId  审批人 ID
+     * @param approverName 审批人姓名
+     * @param approved    是否通过
+     * @param statusText  状态文本（从字典获取）
+     * @param comment     审批意见
      */
-    private void sendNotification(Demand demand, Long approverId, Boolean approved, String comment) {
-        User approver = userMapper.findById(approverId);
-        String approverName = approver != null ? approver.getRealName() : "审批人";
+    private void sendNotification(Demand demand, Long approverId, String approverName, 
+                                  Boolean approved, String statusText, String comment) {
+        // 如果审批人就是提出者，不发送通知
+        if (demand.getCreatorId() == null || demand.getCreatorId().equals(approverId)) {
+            log.debug("审批人即为提出者，跳过通知: demandId={}, approverId={}", 
+                    demand.getId(), approverId);
+            return;
+        }
         
         String title = approved ? "需求审批通过" : "需求被拒绝";
+        String commentText = comment != null && !comment.isEmpty() ? comment : "无";
         String content = String.format(
                 "您的需求【%s】已由 %s %s。审批意见：%s",
-                demand.getTitle(), approverName, approved ? "审批通过" : "拒绝", comment
+                demand.getTitle(), approverName, statusText, commentText
         );
         
         notificationService.sendNotification(
                 approverId,              // 发送人：审批人
-                demand.getProposerId(),  // 接收人：提出者
+                demand.getCreatorId(),   // 接收人：提出者
                 title,
                 content,
                 1,                       // 类型：需求通知
                 demand.getId()           // 关联需求 ID
         );
         
-        log.debug("已发送审批通知给提出人: demandId={}, proposerId={}", 
-                demand.getId(), demand.getProposerId());
+        log.debug("已发送审批通知给提出者: demandId={}, proposerId={}", 
+                demand.getId(), demand.getCreatorId());
     }
 }

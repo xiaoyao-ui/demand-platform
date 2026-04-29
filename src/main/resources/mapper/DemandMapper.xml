@@ -1,0 +1,416 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.demand.module.demand.mapper.DemandMapper">
+
+    <!-- 结果映射 -->
+    <resultMap id="DemandResultMap" type="com.demand.module.demand.entity.Demand">
+        <id property="id" column="id"/>
+        <result property="title" column="title"/>
+        <result property="description" column="description"/>
+        <result property="type" column="type"/>
+        <result property="priority" column="priority"/>
+        <result property="status" column="status"/>
+        <result property="projectId" column="project_id"/>
+        <result property="moduleId" column="module_id"/>
+        <result property="iterationId" column="iteration_id"/>
+        <result property="parentId" column="parent_id"/>
+        <result property="creatorId" column="creator_id"/>
+        <result property="assigneeId" column="assignee_id"/>
+        <result property="reviewerId" column="reviewer_id"/>
+        <result property="approverId" column="approver_id"/>
+        <result property="estimatedHours" column="estimated_hours"/>
+        <result property="actualHours" column="actual_hours"/>
+        <result property="storyPoints" column="story_points"/>
+        <result property="expectedStartDate" column="expected_start_date"/>
+        <result property="expectedEndDate" column="expected_end_date"/>
+        <result property="actualStartDate" column="actual_start_date"/>
+        <result property="actualEndDate" column="actual_end_date"/>
+        <result property="approveTime" column="approve_time"/>
+        <result property="startDevelopTime" column="start_develop_time"/>
+        <result property="startTestTime" column="start_test_time"/>
+        <result property="completeTime" column="complete_time"/>
+        <result property="approveComment" column="approve_comment"/>
+        <result property="rejectReason" column="reject_reason"/>
+        <result property="acceptanceCriteria" column="acceptance_criteria"/>
+        <result property="acceptanceResult" column="acceptance_result"/>
+        <result property="version" column="version"/>
+        <result property="source" column="source"/>
+        <result property="businessValue" column="business_value"/>
+        <result property="technicalSolution" column="technical_solution"/>
+        <result property="riskDescription" column="risk_description"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="deleteTime" column="delete_time"/>
+        <result property="creatorName" column="creatorName"/>
+        <result property="assigneeName" column="assigneeName"/>
+        <result property="reviewerName" column="reviewerName"/>
+        <result property="approverName" column="approverName"/>
+        <result property="projectName" column="projectName"/>
+        <result property="moduleName" column="moduleName"/>
+        <result property="iterationName" column="iterationName"/>
+    </resultMap>
+
+    <!-- 新增需求 -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO demand (
+            title, description, type, priority, status,
+            project_id, module_id, iteration_id, parent_id,
+            creator_id, assignee_id, reviewer_id, approver_id,
+            estimated_hours, actual_hours, story_points,
+            expected_start_date, expected_end_date,
+            actual_start_date, actual_end_date,
+            approve_time, start_develop_time, start_test_time, complete_time,
+            approve_comment, reject_reason, acceptance_criteria, acceptance_result,
+            version, source, business_value, technical_solution, risk_description,
+            create_time, update_time
+        ) VALUES (
+                     #{title}, #{description}, #{type}, #{priority}, #{status},
+                     #{projectId}, #{moduleId}, #{iterationId}, #{parentId},
+                     #{creatorId}, #{assigneeId}, #{reviewerId}, #{approverId},
+                     #{estimatedHours}, #{actualHours}, #{storyPoints},
+                     #{expectedStartDate}, #{expectedEndDate},
+                     #{actualStartDate}, #{actualEndDate},
+                     #{approveTime}, #{startDevelopTime}, #{startTestTime}, #{completeTime},
+                     #{approveComment}, #{rejectReason}, #{acceptanceCriteria}, #{acceptanceResult},
+                     #{version}, #{source}, #{businessValue}, #{technicalSolution}, #{riskDescription},
+                     #{createTime}, #{updateTime}
+                 )
+    </insert>
+
+    <!-- 根据需求ID查询需求信息 -->
+    <select id="findById" resultMap="DemandResultMap">
+        SELECT d.*,
+               p.real_name AS creatorName,
+               a.real_name AS assigneeName,
+               r.real_name AS reviewerName,
+               ap.real_name AS approverName
+        FROM demand d
+                 LEFT JOIN sys_user p ON d.creator_id = p.id
+                 LEFT JOIN sys_user a ON d.assignee_id = a.id
+                 LEFT JOIN sys_user r ON d.reviewer_id = r.id
+                 LEFT JOIN sys_user ap ON d.approver_id = ap.id
+        WHERE d.id = #{id}
+    </select>
+
+    <!-- 更新需求 -->
+    <update id="update">
+        UPDATE demand
+        <set>
+            <if test="title != null">title=#{title},</if>
+            <if test="description != null">description=#{description},</if>
+            <if test="type != null">type=#{type},</if>
+            <if test="priority != null">priority=#{priority},</if>
+            <if test="status != null">status=#{status},</if>
+            <if test="projectId != null">project_id=#{projectId},</if>
+            <if test="moduleId != null">module_id=#{moduleId},</if>
+            <if test="iterationId != null">iteration_id=#{iterationId},</if>
+            <if test="assigneeId != null">assignee_id=#{assigneeId},</if>
+            <if test="reviewerId != null">reviewer_id=#{reviewerId},</if>
+            <if test="approverId != null">approver_id=#{approverId},</if>
+            <if test="estimatedHours != null">estimated_hours=#{estimatedHours},</if>
+            <if test="actualHours != null">actual_hours=#{actualHours},</if>
+            <if test="storyPoints != null">story_points=#{storyPoints},</if>
+            <if test="expectedStartDate != null">expected_start_date=#{expectedStartDate},</if>
+            <if test="expectedEndDate != null">expected_end_date=#{expectedEndDate},</if>
+            <if test="actualStartDate != null">actual_start_date=#{actualStartDate},</if>
+            <if test="actualEndDate != null">actual_end_date=#{actualEndDate},</if>
+            <if test="approveTime != null">approve_time=#{approveTime},</if>
+            <if test="startDevelopTime != null">start_develop_time=#{startDevelopTime},</if>
+            <if test="startTestTime != null">start_test_time=#{startTestTime},</if>
+            <if test="completeTime != null">complete_time=#{completeTime},</if>
+            <if test="approveComment != null">approve_comment=#{approveComment},</if>
+            <if test="rejectReason != null">reject_reason=#{rejectReason},</if>
+            <if test="acceptanceCriteria != null">acceptance_criteria=#{acceptanceCriteria},</if>
+            <if test="acceptanceResult != null">acceptance_result=#{acceptanceResult},</if>
+            <if test="version != null">version=#{version},</if>
+            <if test="source != null">source=#{source},</if>
+            <if test="businessValue != null">business_value=#{businessValue},</if>
+            <if test="technicalSolution != null">technical_solution=#{technicalSolution},</if>
+            <if test="riskDescription != null">risk_description=#{riskDescription},</if>
+            update_time=#{updateTime}
+        </set>
+        WHERE id=#{id}
+    </update>
+
+    <!-- 删除需求 -->
+    <delete id="deleteById">
+        DELETE FROM demand WHERE id = #{id}
+    </delete>
+
+    <!-- 根据条件查询需求信息 -->
+    <select id="findByCondition" resultMap="DemandResultMap">
+        SELECT d.*,
+        p.real_name AS creatorName,
+        a.real_name AS assigneeName,
+        ap.real_name AS approverName,
+        m.name as moduleName
+        FROM demand d
+        LEFT JOIN sys_user p ON d.creator_id = p.id
+        LEFT JOIN sys_user a ON d.assignee_id = a.id
+        LEFT JOIN sys_user ap ON d.approver_id = ap.id
+        LEFT JOIN project_module m ON d.module_id = m.id
+        WHERE 1=1
+        <if test="keyword != null and keyword != ''">
+            AND (d.title LIKE CONCAT('%', #{keyword}, '%') OR d.description LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="type != null">AND d.type = #{type}</if>
+        <if test="priority != null">AND d.priority = #{priority}</if>
+        <if test="status != null">AND d.status = #{status}</if>
+        <if test="proposerId != null">AND d.creator_id = #{proposerId}</if>
+        <if test="assigneeId != null">AND d.assignee_id = #{assigneeId}</if>
+        ORDER BY d.create_time DESC
+        LIMIT #{offset}, #{pageSize}
+    </select>
+
+    <!-- 查询所有未删除的需求信息 -->
+    <select id="selectAll" resultMap="DemandResultMap">
+        SELECT * FROM demand WHERE delete_time IS NULL ORDER BY create_time DESC
+    </select>
+
+    <!-- 根据条件统计需求条数 -->
+    <select id="countByCondition" resultType="java.lang.Long">
+        SELECT COUNT(*) FROM demand WHERE delete_time IS NULL
+        <if test="keyword != null and keyword != ''">
+            AND (title LIKE CONCAT('%', #{keyword}, '%') OR description LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="type != null">AND type = #{type}</if>
+        <if test="priority != null">AND priority = #{priority}</if>
+        <if test="status != null">AND status = #{status}</if>
+        <if test="proposerId != null">AND creator_id = #{proposerId}</if>
+        <if test="assigneeId != null">AND assignee_id = #{assigneeId}</if>
+    </select>
+
+    <!-- 根据状态分组统计需求数量 -->
+    <select id="countByStatusGroup" resultType="java.util.Map">
+        SELECT status, COUNT(*) as count FROM demand WHERE delete_time IS NULL GROUP BY status
+    </select>
+
+    <!-- 根据类型分组统计需求数量 -->
+    <select id="countByTypeGroup" resultType="java.util.Map">
+        SELECT type, COUNT(*) as count FROM demand WHERE delete_time IS NULL GROUP BY type
+    </select>
+
+    <!-- 根据优先级分组统计需求数量 -->
+    <select id="countByPriorityGroup" resultType="java.util.Map">
+        SELECT priority, COUNT(*) as count FROM demand WHERE delete_time IS NULL GROUP BY priority
+    </select>
+
+    <!-- 查询近7天每天的需求创建数量 -->
+    <select id="countByDateForLast7Days" resultType="java.util.Map">
+        SELECT DATE(create_time) as date, COUNT(*) as count
+        FROM demand
+        WHERE create_time >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
+          AND delete_time IS NULL
+        GROUP BY DATE(create_time)
+        ORDER BY date ASC
+    </select>
+
+    <!-- 查询待审批的需求，超过指定时间未审批的 -->
+    <select id="findPendingApprovalOverHours" resultMap="DemandResultMap">
+        SELECT d.*, p.real_name AS creatorName
+        FROM demand d
+                 LEFT JOIN sys_user p ON d.creator_id = p.id
+        WHERE d.status = 'PENDING_REVIEW'
+          AND d.create_time &lt; DATE_SUB(NOW(), INTERVAL #{hours} HOUR)
+          AND d.delete_time IS NULL
+        ORDER BY d.create_time ASC
+    </select>
+
+    <!-- 条件查询需求 分页 -->
+    <select id="selectDemandPage" resultMap="DemandResultMap">
+        SELECT d.*,
+        p.real_name AS creatorName,
+        a.real_name AS assigneeName,
+        pr.name AS projectName,
+        m.name AS moduleName,
+        i.name AS iterationName
+        FROM demand d
+        LEFT JOIN sys_user p ON d.creator_id = p.id
+        LEFT JOIN sys_user a ON d.assignee_id = a.id
+        LEFT JOIN sys_project pr ON d.project_id = pr.id
+        LEFT JOIN project_module m ON d.module_id = m.id
+        LEFT JOIN sys_iteration i ON d.iteration_id = i.id
+        WHERE d.delete_time IS NULL
+        <if test="query.keyword != null and query.keyword != ''">
+            AND (d.title LIKE CONCAT('%', #{query.keyword}, '%')
+            OR d.description LIKE CONCAT('%', #{query.keyword}, '%'))
+        </if>
+        <if test="query.projectId != null">
+            AND d.project_id = #{query.projectId}
+        </if>
+        <if test="query.moduleId != null">
+            AND d.module_id = #{query.moduleId}
+        </if>
+        <if test="query.iterationId != null">
+            AND d.iteration_id = #{query.iterationId}
+        </if>
+        <if test="query.type != null and query.type != ''">
+            AND d.type = #{query.type}
+        </if>
+        <if test="query.priority != null and query.priority != ''">
+            AND d.priority = #{query.priority}
+        </if>
+        <if test="query.status != null and query.status != ''">
+            AND d.status = #{query.status}
+        </if>
+        <if test="query.creatorId != null">
+            AND d.creator_id = #{query.creatorId}
+        </if>
+        <if test="query.assigneeId != null">
+            AND d.assignee_id = #{query.assigneeId}
+        </if>
+        ORDER BY d.create_time DESC
+    </select>
+
+    <!-- 根据需求ID查询需求明细信息 -->
+    <select id="selectDemandWithDetails" resultMap="DemandResultMap">
+        SELECT d.*,
+               p.real_name AS creatorName,
+               a.real_name AS assigneeName,
+               r.real_name AS reviewerName,
+               ap.real_name AS approverName,
+               pr.name AS projectName,
+               m.name AS moduleName,
+               i.name AS iterationName
+        FROM demand d
+                 LEFT JOIN sys_user p ON d.creator_id = p.id
+                 LEFT JOIN sys_user a ON d.assignee_id = a.id
+                 LEFT JOIN sys_user r ON d.reviewer_id = r.id
+                 LEFT JOIN sys_user ap ON d.approver_id = ap.id
+                 LEFT JOIN sys_project pr ON d.project_id = pr.id
+                 LEFT JOIN project_module m ON d.module_id = m.id
+                 LEFT JOIN sys_iteration i ON d.iteration_id = i.id
+        WHERE d.id = #{id}
+          AND d.delete_time IS NULL
+    </select>
+
+    <!-- 查询指定项目下的需求列表 -->
+    <select id="selectDemandsByProjectId" resultMap="DemandResultMap">
+        SELECT d.*,
+               p.real_name AS creatorName,
+               a.real_name AS assigneeName
+        FROM demand d
+                 LEFT JOIN sys_user p ON d.creator_id = p.id
+                 LEFT JOIN sys_user a ON d.assignee_id = a.id
+        WHERE d.project_id = #{projectId}
+          AND d.delete_time IS NULL
+        ORDER BY d.create_time DESC
+    </select>
+
+    <!-- 统计指定状态的需求条数 -->
+    <select id="countByStatus" resultType="int">
+        SELECT COUNT(*) FROM demand
+        WHERE status = #{status}
+          AND delete_time IS NULL
+    </select>
+
+    <!-- 统计指定项目下的指定状态的需求条数 -->
+    <select id="countByProjectAndStatus" resultType="int">
+        SELECT COUNT(*) FROM demand
+        WHERE project_id = #{projectId}
+          AND status = #{status}
+          AND delete_time IS NULL
+    </select>
+
+    <!-- 获取项目统计数据 -->
+    <select id="getProjectStats" resultType="java.util.Map">
+        SELECT
+            COUNT(*) as totalDemands,
+            SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) as completedDemands,
+            SUM(CASE WHEN status IN ('IN_DEVELOPMENT', 'IN_TEST') THEN 1 ELSE 0 END) as inProgressDemands,
+            SUM(CASE WHEN status = 'PENDING_REVIEW' THEN 1 ELSE 0 END) as pendingDemands,
+            CASE
+                WHEN COUNT(*) > 0 THEN
+                    ROUND(SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2)
+                ELSE 0
+            END as completionRate,
+            AVG(CASE
+                WHEN complete_time IS NOT NULL AND start_develop_time IS NOT NULL
+                THEN DATEDIFF(complete_time, start_develop_time)
+                ELSE NULL
+            END) as avgDevelopmentDays
+        FROM demand
+        WHERE project_id = #{projectId}
+          AND delete_time IS NULL
+    </select>
+
+    <!-- 获取项目下需求的状态分布 -->
+    <select id="getProjectStatusDistribution" resultType="java.util.Map">
+        SELECT status, COUNT(*) as count
+        FROM demand
+        WHERE project_id = #{projectId}
+          AND delete_time IS NULL
+        GROUP BY status
+        ORDER BY count DESC
+    </select>
+
+    <!-- 获取项目下需求的类型分布 -->
+    <select id="getProjectTypeDistribution" resultType="java.util.Map">
+        SELECT type, COUNT(*) as count
+        FROM demand
+        WHERE project_id = #{projectId}
+          AND delete_time IS NULL
+        GROUP BY type
+        ORDER BY count DESC
+    </select>
+
+    <!-- 获取迭代看板数据 -->
+    <select id="getIterationKanban" resultType="java.util.Map">
+        SELECT
+            i.id as iterationId,
+            i.name as iterationName,
+            i.start_time as startDate,
+            i.end_time as endDate,
+            COUNT(d.id) as totalDemands,
+            SUM(CASE WHEN d.status = 'COMPLETED' THEN 1 ELSE 0 END) as completedCount,
+            SUM(CASE WHEN d.status IN ('IN_DEVELOPMENT', 'IN_TEST') THEN 1 ELSE 0 END) as inProgressCount,
+            SUM(CASE WHEN d.status NOT IN ('COMPLETED', 'CANCELLED') THEN 1 ELSE 0 END) as pendingCount,
+            CASE
+                WHEN COUNT(d.id) > 0 THEN
+                    ROUND(SUM(CASE WHEN d.status = 'COMPLETED' THEN 1 ELSE 0 END) * 100.0 / COUNT(d.id), 2)
+                ELSE 0
+            END as progressPercent
+        FROM sys_iteration i
+        LEFT JOIN demand d ON i.id = d.iteration_id AND d.delete_time IS NULL
+        WHERE i.id = #{iterationId}
+        GROUP BY i.id, i.name, i.start_time, i.end_time
+    </select>
+
+    <!-- 获取迭代内需求的状态分布 -->
+    <select id="getIterationStatusDistribution" resultType="java.util.Map">
+        SELECT d.status, COUNT(*) as count
+        FROM demand d
+        WHERE d.iteration_id = #{iterationId}
+          AND d.delete_time IS NULL
+        GROUP BY d.status
+        ORDER BY count DESC
+    </select>
+
+    <!-- 获取迭代内需求的负责人分布 -->
+    <select id="getIterationAssigneeDistribution" resultType="java.util.Map">
+        SELECT
+            COALESCE(u.real_name, '未分配') as assigneeName,
+            COUNT(*) as count
+        FROM demand d
+        LEFT JOIN sys_user u ON d.assignee_id = u.id
+        WHERE d.iteration_id = #{iterationId}
+          AND d.delete_time IS NULL
+        GROUP BY u.real_name
+        ORDER BY count DESC
+    </select>
+
+    <!-- 获取迭代每日完成趋势（用于燃尽图） -->
+    <select id="getIterationDailyProgress" resultType="java.util.Map">
+        SELECT
+            DATE(d.complete_time) as date,
+            COUNT(*) as dailyCompleted
+        FROM demand d
+        WHERE d.iteration_id = #{iterationId}
+          AND d.delete_time IS NULL
+          AND d.status = 'COMPLETED'
+          AND d.complete_time IS NOT NULL
+        GROUP BY DATE(d.complete_time)
+        ORDER BY date ASC
+    </select>
+
+</mapper>

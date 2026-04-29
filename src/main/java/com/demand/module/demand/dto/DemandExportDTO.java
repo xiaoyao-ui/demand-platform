@@ -6,10 +6,14 @@ import com.alibaba.excel.annotation.write.style.ColumnWidth;
 import com.alibaba.excel.annotation.write.style.ContentRowHeight;
 import com.alibaba.excel.annotation.write.style.HeadRowHeight;
 import lombok.Data;
+
 import java.time.LocalDateTime;
 
 /**
- * 需求导出 Excel 实体
+ * 需求导出 Excel DTO
+ * <p>
+ * 用于将需求数据导出为 Excel 文件，包含需求的基本信息和状态。
+ * </p>
  */
 @Data
 @HeadRowHeight(25) // 表头行高
@@ -46,7 +50,7 @@ public class DemandExportDTO {
 
     @ExcelProperty(value = "所属模块", index = 7)
     @ColumnWidth(15)
-    private String module;
+    private String moduleName;
 
     @ExcelProperty(value = "创建时间", index = 8)
     @ColumnWidth(20)

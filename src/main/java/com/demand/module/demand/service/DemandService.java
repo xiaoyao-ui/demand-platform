@@ -10,7 +10,6 @@ import com.demand.module.demand.entity.Demand;
 import com.demand.module.demand.entity.DemandStatusHistory;
 import com.demand.module.demand.mapper.DemandMapper;
 import com.demand.module.demand.mapper.DemandStatusHistoryMapper;
-import com.demand.module.demand.service.DemandActivityService;
 import com.demand.module.notification.service.NotificationService;
 import com.demand.module.user.entity.User;
 import com.demand.module.user.mapper.RoleMapper;
@@ -25,23 +24,6 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
-/**
- * 需求业务逻辑服务
- * <p>
- * 负责需求的完整生命周期管理，包括创建、更新、删除、状态变更、审批等。
- * 集成操作审计、状态历史记录、实时通知等功能。
- * </p>
- *
- * <h3>核心功能：</h3>
- * <ul>
- *   <li><b>需求CRUD</b>：创建、查询、更新、删除需求</li>
- *   <li><b>状态管理</b>：提交审核、撤回、重新提交、状态变更</li>
- *   <li><b>操作审计</b>：记录所有关键操作到时间轴</li>
- *   <li><b>状态历史</b>：记录每次状态变更的详细信息</li>
- *   <li><b>实时通知</b>：状态变更时通知相关人员</li>
- *   <li><b>数据统计</b>：提供仪表盘统计数据</li>
- * </ul>
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -53,140 +35,153 @@ public class DemandService {
     private final UserMapper userMapper;
     private final RoleMapper roleMapper;
     private final DemandActivityService activityService;
+    private final DemandTagService demandTagService;
+    private final DemandDependencyService demandDependencyService;
+    private final com.demand.module.dict.service.DictService dictService;
 
     /**
      * 创建需求
-     * <p>
-     * 新建需求后状态默认为"待审批"（status=0）。
-     * 同时记录操作动态："创建了需求"。
-     * </p>
-     *
-     * @param createDTO 需求创建对象
      */
-    public void createDemand(DemandCreateDTO createDTO) {
-        log.info("创建需求: title={}, type={}, proposerId={}",
-                createDTO.getTitle(), createDTO.getType(), createDTO.getProposerId());
+    @Transactional
+    public void createDemand(DemandCreateDTO createDTO, Long creatorId) {
+        log.info("创建需求: title={}, creatorId={}", createDTO.getTitle(), creatorId);
 
         Demand demand = new Demand();
         demand.setTitle(createDTO.getTitle());
         demand.setDescription(createDTO.getDescription());
-        demand.setType(createDTO.getType());
-        demand.setPriority(createDTO.getPriority());
-        demand.setStatus(0);
-        demand.setProposerId(createDTO.getProposerId());
-        demand.setModule(createDTO.getModule());
-        demand.setExpectedDate(createDTO.getExpectedDate());
-        demand.setCreateTime(LocalDateTime.now());
-        demand.setUpdateTime(LocalDateTime.now());
+        demand.setType(createDTO.getType() != null ? createDTO.getType() : "FEATURE");
+        demand.setPriority(createDTO.getPriority() != null ? createDTO.getPriority() : "MEDIUM");
+        demand.setStatus("DRAFT");
+        demand.setProjectId(createDTO.getProjectId());
+        demand.setModuleId(createDTO.getModuleId());
+        demand.setIterationId(createDTO.getIterationId());
+        demand.setCreatorId(creatorId);
+        demand.setEstimatedHours(createDTO.getEstimatedHours());
+        demand.setStoryPoints(createDTO.getStoryPoints());
+        demand.setExpectedStartDate(createDTO.getExpectedStartDate());
+        demand.setExpectedEndDate(createDTO.getExpectedEndDate());
+        demand.setSource(createDTO.getSource());
+        demand.setBusinessValue(createDTO.getBusinessValue());
+        demand.setTechnicalSolution(createDTO.getTechnicalSolution());
+        demand.setRiskDescription(createDTO.getRiskDescription());
+        demand.setAcceptanceCriteria(createDTO.getAcceptanceCriteria());
 
         demandMapper.insert(demand);
-        
-        // 埋点：记录需求创建
-        User proposer = userMapper.findById(createDTO.getProposerId());
-        String proposerName = proposer != null ? proposer.getRealName() : "未知用户";
-        activityService.saveActivity(demand.getId(), createDTO.getProposerId(), proposerName,
+
+        if (createDTO.getTagIds() != null && !createDTO.getTagIds().isEmpty()) {
+            demandTagService.addTagsToDemand(demand.getId(), createDTO.getTagIds());
+        }
+
+        User creator = userMapper.findById(creatorId);
+        String creatorName = creator != null ? creator.getRealName() : "未知用户";
+        activityService.saveActivity(demand.getId(), creatorId, creatorName,
                 "CREATE", "创建了需求", null);
-        
-        log.info("需求创建成功: demandId={}, title={}", demand.getId(), demand.getTitle());
+
+        log.info("需求创建成功: demandId={}", demand.getId());
     }
 
     /**
      * 根据 ID 查询需求详情
-     *
-     * @param id 需求 ID
-     * @return 需求对象（包含提出人、负责人、审批人姓名）
-     * @throws BusinessException 当需求不存在时抛出
      */
     public Demand getDemandById(Long id) {
         log.debug("查询需求详情: demandId={}", id);
-        Demand demand = demandMapper.findById(id);
+        Demand demand = demandMapper.selectDemandWithDetails(id);
         if (demand == null) {
             log.warn("需求不存在: demandId={}", id);
             throw new BusinessException("需求不存在");
         }
+
+        List<String> tags = demandTagService.getTagsByDemandId(id).stream()
+                .map(tag -> tag.getName())
+                .collect(Collectors.toList());
+        demand.setTags(tags);
+
         return demand;
     }
 
     /**
      * 更新需求
-     * <p>
-     * 支持部分字段更新（动态 SQL）。
-     * 如果更新了状态字段，会自动：
-     * <ol>
-     *   <li>记录状态变更历史</li>
-     *   <li>记录操作动态</li>
-     *   <li>发送通知给提出人</li>
-     * </ol>
-     * </p>
-     *
-     * @param id         需求 ID
-     * @param demand     更新对象
-     * @param operatorId 操作人 ID
      */
     @Transactional
     public void updateDemand(Long id, Demand demand, Long operatorId) {
         log.info("更新需求: demandId={}, operatorId={}", id, operatorId);
 
-        Demand existDemand = demandMapper.findById(id);
+        // 1. 验证需求是否存在
+        Demand existDemand = demandMapper.selectById(id);
         if (existDemand == null) {
             log.warn("需求不存在，更新失败: demandId={}", id);
             throw new BusinessException("需求不存在");
         }
 
-        Integer oldStatus = existDemand.getStatus();
-        Integer newStatus = demand.getStatus();
-
-        // 如果状态变为已完成，自动记录实际完成时间
-        if (newStatus != null && newStatus == 4) {
-            demand.setActualDate(LocalDateTime.now());
+        // 2. 验证状态是否允许编辑（只有草稿或被拒绝的需求可以编辑）
+        String currentStatus = existDemand.getStatus();
+        if (!"DRAFT".equals(currentStatus) && !"REJECTED".equals(currentStatus)) {
+            throw new BusinessException("只有草稿或被拒绝的需求可以编辑");
         }
 
+        // 3. 处理特殊状态的自动填充
+        String oldStatus = existDemand.getStatus();
+        String newStatus = demand.getStatus();
+        
+        if ("COMPLETED".equals(newStatus)) {
+            demand.setActualEndDate(java.time.LocalDate.now());
+            demand.setCompleteTime(LocalDateTime.now());
+        }
+
+        // 4. 执行更新
         demand.setId(id);
         demand.setUpdateTime(LocalDateTime.now());
         demandMapper.update(demand);
 
+        // 5. 如果状态发生变更，记录变更历史和操作动态
         if (oldStatus != null && newStatus != null && !oldStatus.equals(newStatus)) {
-            log.info("需求状态变更: demandId={}, oldStatus={}, newStatus={}", id, oldStatus, newStatus);
-            recordStatusChange(id, oldStatus, newStatus, null, operatorId);
+            handleStatusChange(id, existDemand.getTitle(), oldStatus, newStatus, operatorId);
+        }
+    }
 
-            // 核心修复：补充操作动态埋点
-            User operator = userMapper.findById(operatorId);
-            String operatorName = operator != null ? operator.getRealName() : "系统";
-            String oldText = getStatusText(oldStatus);
-            String newText = getStatusText(newStatus);
-            activityService.saveActivity(id, operatorId, operatorName,
-                    "STATUS_CHANGE",
-                    String.format("将状态从【%s】修改为【%s】", oldText, newText),
-                    null);
+    /**
+     * 处理状态变更的通用逻辑
+     */
+    private void handleStatusChange(Long demandId, String title, String oldStatus, String newStatus, Long operatorId) {
+        log.info("需求状态变更: demandId={}, oldStatus={}, newStatus={}", demandId, oldStatus, newStatus);
 
-            if (existDemand.getProposerId() != null && !existDemand.getProposerId().equals(operatorId)) {
-                User operatorForNotif = userMapper.findById(operatorId);
-                String operatorNameForNotif = operatorForNotif != null ? operatorForNotif.getRealName() : "系统";
-                notificationService.sendNotification(
-                        operatorId,
-                        existDemand.getProposerId(),
-                        "需求状态变更",
-                        "您的需求【" + existDemand.getTitle() + "】状态已由 " + operatorNameForNotif + " 变更为【" + getStatusText(newStatus) + "】",
-                        1,
-                        id
-                );
-            }
+        // 1. 记录状态变更历史
+        recordStatusChange(demandId, oldStatus, newStatus, null, operatorId);
+
+        // 2. 获取操作人信息
+        User operator = userMapper.findById(operatorId);
+        String operatorName = operator != null ? operator.getRealName() : "系统";
+
+        // 3. 从字典模块获取状态的中文名称
+        String oldText = dictService.getDictName("demand_status", oldStatus);
+        String newText = dictService.getDictName("demand_status", newStatus);
+        
+        // 4. 保存操作动态
+        String activityContent = String.format("将状态从【%s】修改为【%s】", oldText, newText);
+        activityService.saveActivity(demandId, operatorId, operatorName, "STATUS_CHANGE", activityContent, null);
+
+        // 5. 通知提出人（如果操作人不是提出人）
+        Demand demand = demandMapper.selectById(demandId);
+        if (demand != null && demand.getCreatorId() != null && !demand.getCreatorId().equals(operatorId)) {
+            String notificationContent = String.format(
+                "您的需求【%s】状态已由 %s 变更为【%s】", 
+                title, operatorName, newText
+            );
+            notificationService.sendNotification(
+                operatorId,
+                demand.getCreatorId(),
+                "需求状态变更",
+                notificationContent,
+                1,
+                demandId
+            );
         }
     }
 
     /**
      * 变更需求状态
-     * <p>
-     * 通用的状态变更方法，适用于各种场景。
-     * 会自动记录状态历史、操作动态，并通知相关人员。
-     * </p>
-     *
-     * @param demandId   需求 ID
-     * @param newStatus  新状态
-     * @param remark     备注说明
-     * @param operatorId 操作人 ID
      */
-    public void changeStatus(Long demandId, Integer newStatus, String remark, Long operatorId) {
+    public void changeStatus(Long demandId, String newStatus, String remark, Long operatorId) {
         log.info("变更需求状态: demandId={}, newStatus={}, operatorId={}, remark={}",
                 demandId, newStatus, operatorId, remark);
 
@@ -196,75 +191,26 @@ public class DemandService {
             throw new BusinessException("需求不存在");
         }
 
-        Integer oldStatus = demand.getStatus();
+        String oldStatus = demand.getStatus();
         demand.setStatus(newStatus);
         demand.setUpdateTime(LocalDateTime.now());
         demandMapper.update(demand);
 
-        recordStatusChange(demandId, oldStatus, newStatus, remark, operatorId);
-
-        // 埋点：记录状态变更
-        User operator = userMapper.findById(operatorId);
-        String operatorName = operator != null ? operator.getRealName() : "系统";
-        String oldText = getStatusText(oldStatus);
-        String newText = getStatusText(newStatus);
-        activityService.saveActivity(demandId, operatorId, operatorName,
-                "STATUS_CHANGE",
-                String.format("将状态从【%s】修改为【%s】", oldText, newText),
-                null);
-
-        String statusText = getStatusText(newStatus);
-
-        //通知提出人需求变更
-        if (demand.getProposerId() != null && !demand.getProposerId().equals(operatorId)) {
-            notificationService.sendNotification(
-                    operatorId,             // userId = 操作人
-                    demand.getProposerId(), // receiverId = 接收人（提出人）
-                    "需求状态变更",
-                    "您的需求【" + demand.getTitle() + "】状态已变更为: " + statusText + " by " + operatorName,
-                    1,
-                    demandId
-            );
+        // 处理特殊状态的自动填充
+        if ("COMPLETED".equals(newStatus)) {
+            demand.setActualEndDate(java.time.LocalDate.now());
+            demand.setCompleteTime(LocalDateTime.now());
+            demandMapper.update(demand);
         }
 
-        //通知分配人需求变更
-        if (demand.getAssigneeId() != null && !demand.getAssigneeId().equals(operatorId)) {
-            notificationService.sendNotification(
-                    operatorId,             // userId = 操作人
-                    demand.getAssigneeId(), // receiverId = 接收人（分配人）
-                    "分配的需求状态变更",
-                    "您负责的需求【" + demand.getTitle() + "】状态已变更为: " + statusText + " by " + operatorName,
-                    1,
-                    demandId
-            );
-        }
+        // 统一处理状态变更逻辑
+        handleStatusChange(demandId, demand.getTitle(), oldStatus, newStatus, operatorId);
     }
 
-    //需求状态代码转义
-    private String getStatusText(Integer status) {
-        if (status == null) {
-            return "未知";
-        }
-        switch (status) {
-            case 0:
-                return "待审批";
-            case 1:
-                return "审批通过";
-            case 2:
-                return "开发中";
-            case 3:
-                return "测试中";
-            case 4:
-                return "已完成";
-            case 5:
-                return "已拒绝";
-            default:
-                return "未知";
-        }
-    }
-
-    //新增状态变更记录
-    private void recordStatusChange(Long demandId, Integer oldStatus, Integer newStatus, String remark, Long operatorId) {
+    /**
+     * 记录状态变更历史
+     */
+    private void recordStatusChange(Long demandId, String oldStatus, String newStatus, String remark, Long operatorId) {
         DemandStatusHistory history = new DemandStatusHistory();
         history.setDemandId(demandId);
         history.setOldStatus(oldStatus);
@@ -276,7 +222,9 @@ public class DemandService {
         log.debug("记录状态变更历史: demandId={}, oldStatus={}, newStatus={}", demandId, oldStatus, newStatus);
     }
 
-    //根据需求主键获取需求状态历史
+    /**
+     * 根据需求主键获取需求状态历史
+     */
     public List<DemandStatusHistory> getStatusHistory(Long demandId) {
         log.debug("查询需求状态历史: demandId={}", demandId);
         return statusHistoryMapper.findByDemandId(demandId);
@@ -284,15 +232,6 @@ public class DemandService {
 
     /**
      * 撤回需求
-     * <p>
-     * 提出人可以将待审批的需求撤回，状态变回"草稿"。
-     * 需要填写撤回原因。
-     * </p>
-     *
-     * @param id            需求 ID
-     * @param currentUserId 当前用户 ID
-     * @param reason        撤回原因
-     * @throws BusinessException 当用户无权限或状态不正确时抛出
      */
     @Transactional
     public void withdrawDemand(Long id, Long currentUserId, String reason) {
@@ -303,20 +242,20 @@ public class DemandService {
             throw new BusinessException("需求不存在");
         }
         
-        if (!existDemand.getProposerId().equals(currentUserId)) {
+        if (!existDemand.getCreatorId().equals(currentUserId)) {
             throw new BusinessException("只有需求提出者才能撤回");
         }
         
-        if (existDemand.getStatus() != 0) {
+        if (!"PENDING_REVIEW".equals(existDemand.getStatus())) {
             throw new BusinessException("只能撤回待审批状态的需求");
         }
         
-        Integer oldStatus = existDemand.getStatus();
-        existDemand.setStatus(6);
+        String oldStatus = existDemand.getStatus();
+        existDemand.setStatus("WITHDRAWN");
         existDemand.setUpdateTime(LocalDateTime.now());
         demandMapper.update(existDemand);
         
-        recordStatusChange(id, oldStatus, 6, "撤回原因：" + reason, currentUserId);
+        recordStatusChange(id, oldStatus, "WITHDRAWN", "撤回原因：" + reason, currentUserId);
         
         // 埋点：记录需求撤回
         User operator = userMapper.findById(currentUserId);
@@ -341,14 +280,6 @@ public class DemandService {
 
     /**
      * 提交需求审核
-     * <p>
-     * 将草稿状态的需求提交审核，状态变为"待审批"。
-     * 同时通知所有项目经理和管理员。
-     * </p>
-     *
-     * @param id            需求 ID
-     * @param currentUserId 当前用户 ID
-     * @throws BusinessException 当用户无权限或状态不正确时抛出
      */
     public void submitForApproval(Long id, Long currentUserId) {
         log.info("提交需求审核: demandId={}, userId={}", id, currentUserId);
@@ -358,20 +289,20 @@ public class DemandService {
             throw new BusinessException("需求不存在");
         }
         
-        if (!existDemand.getProposerId().equals(currentUserId)) {
+        if (!existDemand.getCreatorId().equals(currentUserId)) {
             throw new BusinessException("只有需求提出者才能提交审核");
         }
         
-        if (existDemand.getStatus() != 6) {
-            throw new BusinessException("只有草稿状态的需求才能提交审核");
+        if (!"DRAFT".equals(existDemand.getStatus()) && !"WITHDRAWN".equals(existDemand.getStatus())) {
+            throw new BusinessException("只有草稿或已撤回状态的需求才能提交审核");
         }
         
-        Integer oldStatus = existDemand.getStatus();
-        existDemand.setStatus(0);
+        String oldStatus = existDemand.getStatus();
+        existDemand.setStatus("PENDING_REVIEW");
         existDemand.setUpdateTime(LocalDateTime.now());
         demandMapper.update(existDemand);
         
-        recordStatusChange(id, oldStatus, 0, "提交审核", currentUserId);
+        recordStatusChange(id, oldStatus, "PENDING_REVIEW", "提交审核", currentUserId);
         
         // 埋点：记录提交审核
         User operator = userMapper.findById(currentUserId);
@@ -404,40 +335,6 @@ public class DemandService {
 
     /**
      * 重新提交被拒绝的需求
-     * <p>
-     * 当需求被项目经理拒绝后，提出人可以修改需求内容并重新提交审核。
-     * 状态从"已拒绝"(5) 变回"待审批"(0)，进入新一轮审批流程。
-     * </p>
-     * 
-     * <p>
-     * <b>业务流程</b>：
-     * <ol>
-     *   <li>验证需求是否存在</li>
-     *   <li>验证当前用户是否为需求提出者</li>
-     *   <li>验证需求状态是否为"已拒绝"(5)</li>
-     *   <li>将状态改为"待审批"(0)</li>
-     *   <li>记录状态变更历史</li>
-     *   <li>通知所有项目经理重新审批</li>
-     * </ol>
-     * </p>
-     * 
-     * <p>
-     * <b>使用场景</b>：
-     * <ul>
-     *   <li>需求被拒绝后，提出人根据审批意见修改了需求描述</li>
-     *   <li>补充了缺失的流程图或原型图</li>
-     *   <li>调整了优先级或期望完成时间</li>
-     * </ul>
-     * </p>
-     * 
-     * <p>
-     * <b>通知机制</b>：
-     * 系统会自动向所有项目经理发送通知："需求【XXX】已修改并重新提交审核，请再次处理。"
-     * </p>
-     *
-     * @param id            需求 ID
-     * @param currentUserId 当前用户 ID（必须是需求提出者）
-     * @throws BusinessException 当需求不存在、用户无权限或状态不正确时抛出
      */
     @Transactional
     public void resubmitDemand(Long id, Long currentUserId) {
@@ -450,23 +347,23 @@ public class DemandService {
         }
         
         // 2. 验证权限（只有提出者可以重新提交）
-        if (!existDemand.getProposerId().equals(currentUserId)) {
+        if (!existDemand.getCreatorId().equals(currentUserId)) {
             throw new BusinessException("只有需求提出者才能重新提交");
         }
         
         // 3. 验证状态（只能重新提交被拒绝的需求）
-        if (existDemand.getStatus() != 5) {
+        if (!"REJECTED".equals(existDemand.getStatus())) {
             throw new BusinessException("只能重新提交被拒绝状态的需求");
         }
         
         // 4. 更新状态为"待审批"
-        Integer oldStatus = existDemand.getStatus();
-        existDemand.setStatus(0); // 回到待审批状态
+        String oldStatus = existDemand.getStatus();
+        existDemand.setStatus("PENDING_REVIEW"); // 回到待审批状态
         existDemand.setUpdateTime(LocalDateTime.now());
         demandMapper.update(existDemand);
         
         // 5. 记录状态变更历史
-        recordStatusChange(id, oldStatus, 0, "重新提交审核", currentUserId);
+        recordStatusChange(id, oldStatus, "PENDING_REVIEW", "重新提交审核", currentUserId);
         
         // 6. 通知所有项目经理
         List<Long> projectManagerRoleIds = roleMapper.selectRoleIdsByKeys(List.of("PROJECT_MANAGER"));
@@ -495,105 +392,74 @@ public class DemandService {
 
     /**
      * 审批需求
-     * <p>
-     * 项目经理或管理员对待审批的需求进行审批，可以选择通过或拒绝。
-     * 审批通过后状态变为"审批通过"(1)，拒绝后变为"已拒绝"(5)。
-     * </p>
-     * 
-     * <p>
-     * <b>业务流程</b>：
-     * <ol>
-     *   <li>验证需求是否存在</li>
-     *   <li>根据审批结果更新状态（通过→1，拒绝→5）</li>
-     *   <li>记录审批时间和审批意见</li>
-     *   <li>记录状态变更历史</li>
-     *   <li>记录操作动态（包含审批意见）</li>
-     *   <li>发送通知给需求提出者</li>
-     * </ol>
-     * </p>
-     * 
-     * <p>
-     * <b>审批结果</b>：
-     * <ul>
-     *   <li><b>通过</b>：状态变为"审批通过"(1)，需求可以进入开发阶段</li>
-     *   <li><b>拒绝</b>：状态变为"已拒绝"(5)，提出人可以修改后重新提交</li>
-     * </ul>
-     * </p>
-     * 
-     * <p>
-     * <b>审批意见</b>：
-     * <ul>
-     *   <li>选填字段，但建议填写具体的审批意见</li>
-     *   <li>通过时可以填写："需求描述清晰，同意开发"</li>
-     *   <li>拒绝时必须填写原因："需求描述不够详细，请补充流程图"</li>
-     * </ul>
-     * </p>
-     * 
-     * <p>
-     * <b>通知示例</b>：
-     * <ul>
-     *   <li>通过："您的需求【用户登录功能】已通过。审批意见：需求描述清晰，同意开发"</li>
-     *   <li>拒绝："您的需求【用户登录功能】已拒绝。审批意见：缺少详细的接口文档"</li>
-     * </ul>
-     * </p>
-     *
-     * @param approveDTO  审批对象（包含需求ID、是否通过、审批意见）
-     * @param approverId  审批人 ID（项目经理或管理员）
-     * @throws BusinessException 当需求不存在时抛出
      */
+    @Transactional
     public void approveDemand(DemandApproveDTO approveDTO, Long approverId) {
-        log.info("审批需求: demandId={}, approved={}, comment={}", 
+        log.info("审批需求: demandId={}, approved={}, comment={}",
                 approveDTO.getDemandId(), approveDTO.getApproved(), approveDTO.getComment());
-        
+
         // 1. 验证需求是否存在
         Demand demand = demandMapper.findById(approveDTO.getDemandId());
         if (demand == null) {
             throw new BusinessException("需求不存在");
         }
-        
-        // 2. 根据审批结果更新状态
-        Integer oldStatus = demand.getStatus();
-        demand.setStatus(approveDTO.getApproved() ? 1 : 5); // 通过→1，拒绝→5
+
+        // 2. 验证状态（只能审批待审批的需求）
+        if (!"PENDING_REVIEW".equals(demand.getStatus())) {
+            throw new BusinessException("只能审批待审批状态的需求");
+        }
+
+        // 3. 计算新状态（通过→APPROVED，拒绝→REJECTED）
+        String oldStatus = demand.getStatus();
+        String newStatus = approveDTO.getApproved() ? "APPROVED" : "REJECTED";
+
+        // 4. 更新需求信息
+        demand.setStatus(newStatus);
+        demand.setApproverId(approverId);
+        demand.setApproveTime(LocalDateTime.now());
+        demand.setApproveComment(approveDTO.getComment());
         demand.setUpdateTime(LocalDateTime.now());
         demandMapper.update(demand);
-        
-        // 3. 记录状态变更历史（包含审批意见）
-        recordStatusChange(approveDTO.getDemandId(), oldStatus, demand.getStatus(), approveDTO.getComment(), approverId);
-        
-        // 4. 记录操作动态
+
+        // 5. 记录状态变更历史（包含审批意见）
+        recordStatusChange(approveDTO.getDemandId(), oldStatus, newStatus, approveDTO.getComment(), approverId);
+
+        // 6. 获取操作人和状态信息
         User approver = userMapper.findById(approverId);
         String approverName = approver != null ? approver.getRealName() : "系统";
-        String result = approveDTO.getApproved() ? "通过" : "拒绝";
-        activityService.saveActivity(approveDTO.getDemandId(), approverId, approverName,
-                "APPROVE",
-                String.format("审批%s了需求%s", result, approveDTO.getComment() != null ? "（意见：" + approveDTO.getComment() + "）" : ""),
-                null);
+        String resultText = approveDTO.getApproved() ? "通过" : "拒绝";
+        String statusText = dictService.getDictName("demand_status", newStatus);
 
-        // 5. 通知需求提出者
-        if (demand.getProposerId() != null) {
+        // 7. 记录操作动态
+        String activityContent = approveDTO.getComment() != null && !approveDTO.getComment().isEmpty()
+                ? String.format("审批%s了需求（意见：%s）", resultText, approveDTO.getComment())
+                : String.format("审批%s了需求", resultText);
+        activityService.saveActivity(approveDTO.getDemandId(), approverId, approverName, "APPROVE", activityContent, null);
+
+        // 8. 通知需求提出者
+        if (demand.getCreatorId() != null && !demand.getCreatorId().equals(approverId)) {
+            String notificationContent = String.format(
+                    "您的需求【%s】已%s。审批意见：%s",
+                    demand.getTitle(),
+                    statusText,
+                    approveDTO.getComment() != null ? approveDTO.getComment() : "无"
+            );
             notificationService.sendNotification(
                     approverId,              // 发送人：审批人
-                    demand.getProposerId(),  // 接收人：提出者
+                    demand.getCreatorId(),   // 接收人：提出者
                     "需求审批结果通知",
-                    String.format("您的需求【%s】已%s。审批意见：%s", 
-                            demand.getTitle(), 
-                            approveDTO.getApproved() ? "通过" : "拒绝",
-                            approveDTO.getComment()),
+                    notificationContent,
                     1,
                     demand.getId()
             );
         }
+
+        log.info("需求审批完成: demandId={}, status={}, approver={}",
+                demand.getId(), statusText, approverId);
     }
 
     /**
      * 删除需求
-     * <p>
-     * 只能删除草稿状态的需求，防止误删已流转的需求。
-     * </p>
-     *
-     * @param id            需求 ID
-     * @param currentUserId 当前用户 ID
-     * @throws BusinessException 当用户无权限或状态不正确时抛出
      */
     public void deleteDemand(Long id, Long currentUserId) {
         log.info("删除需求: demandId={}, currentUserId={}", id, currentUserId);
@@ -604,21 +470,23 @@ public class DemandService {
             throw new BusinessException("需求不存在");
         }
         
-        if (!existDemand.getProposerId().equals(currentUserId)) {
+        if (!existDemand.getCreatorId().equals(currentUserId)) {
             log.warn("无权删除需求: demandId={}, proposerId={}, currentUserId={}", 
-                    id, existDemand.getProposerId(), currentUserId);
+                    id, existDemand.getCreatorId(), currentUserId);
             throw new BusinessException("只有需求创建者才能删除此需求");
         }
         
-        if (existDemand.getStatus() != 6) {
-            throw new BusinessException("只能删除草稿状态的需求");
+        if (!"DRAFT".equals(existDemand.getStatus()) && !"WITHDRAWN".equals(existDemand.getStatus())) {
+            throw new BusinessException("只能删除草稿或已撤回状态的需求");
         }
         
         demandMapper.deleteById(id);
         log.info("需求删除成功: demandId={}", id);
     }
 
-    //分页查询需求
+    /**
+     * 分页查询需求
+     */
     public PageResult<Demand> queryDemands(DemandQueryDTO queryDTO) {
         if (queryDTO.getPageNum() == null || queryDTO.getPageNum() < 1) {
             queryDTO.setPageNum(1);
@@ -639,7 +507,7 @@ public class DemandService {
                 queryDTO.getType(),
                 queryDTO.getPriority(),
                 queryDTO.getStatus(),
-                queryDTO.getProposerId(),
+                queryDTO.getCreatorId(),
                 queryDTO.getAssigneeId(),
                 offset,
                 queryDTO.getPageSize()
@@ -650,7 +518,7 @@ public class DemandService {
                 queryDTO.getType(),
                 queryDTO.getPriority(),
                 queryDTO.getStatus(),
-                queryDTO.getProposerId(),
+                queryDTO.getCreatorId(),
                 queryDTO.getAssigneeId()
         );
 
@@ -683,54 +551,56 @@ public class DemandService {
         Long total = demandMapper.countByCondition(null, null, null, null, null, null);
         stats.setTotalDemand(total);
         
-        // 2. 按状态统计
-        List<Map<String, Object>> statusCounts = demandMapper.countByStatus();
-        Map<Integer, Long> statusMap = statusCounts.stream()
+        // 2. 按状态统计（使用字典转义）
+        List<Map<String, Object>> statusCounts = demandMapper.countByStatusGroup();
+        Map<String, Long> statusMap = statusCounts.stream()
                 .collect(Collectors.toMap(
-                        m -> (Integer) m.get("status"),
+                        m -> (String) m.get("status"),
                         m -> (Long) m.get("count")
                 ));
-        stats.setPendingCount(statusMap.getOrDefault(0, 0L));
-        stats.setDevelopingCount(statusMap.getOrDefault(2, 0L));
-        stats.setCompletedCount(statusMap.getOrDefault(4, 0L));
         
-        // 3. 类型分布
-        List<Map<String, Object>> typeCounts = demandMapper.countByType();
+        // 从字典获取状态名称并设置统计值
+        stats.setPendingCount(statusMap.getOrDefault("PENDING_REVIEW", 0L));
+        stats.setDevelopingCount(statusMap.getOrDefault("IN_DEVELOPMENT", 0L));
+        stats.setCompletedCount(statusMap.getOrDefault("COMPLETED", 0L));
+        
+        // 3. 类型分布（使用字典转义）
+        List<Map<String, Object>> typeCounts = demandMapper.countByTypeGroup();
         Map<String, Long> typeDistribution = new HashMap<>();
-        typeDistribution.put("功能需求", 0L);
-        typeDistribution.put("优化需求", 0L);
-        typeDistribution.put("Bug修复", 0L);
+        
+        // 初始化所有类型为0
+        List<com.demand.module.dict.entity.Dict> typeDicts = dictService.getDictByType("demand_type");
+        for (com.demand.module.dict.entity.Dict dict : typeDicts) {
+            typeDistribution.put(dict.getName(), 0L);
+        }
+        
+        // 填充实际数据
         for (Map<String, Object> row : typeCounts) {
-            Integer type = (Integer) row.get("type");
+            String typeCode = (String) row.get("type");
             Long count = (Long) row.get("count");
-            String label = switch (type) {
-                case 0 -> "功能需求";
-                case 1 -> "优化需求";
-                case 2 -> "Bug修复";
-                default -> "其他";
-            };
-            typeDistribution.put(label, count);
+            // 从字典获取中文名称
+            String typeName = dictService.getDictName("demand_type", typeCode);
+            typeDistribution.put(typeName, count);
         }
         stats.setTypeDistribution(typeDistribution);
         
-        // 4. 优先级分布
-        List<Map<String, Object>> priorityCounts = demandMapper.countByPriority();
+        // 4. 优先级分布（使用字典转义）
+        List<Map<String, Object>> priorityCounts = demandMapper.countByPriorityGroup();
         Map<String, Long> priorityDistribution = new HashMap<>();
-        priorityDistribution.put("低", 0L);
-        priorityDistribution.put("中", 0L);
-        priorityDistribution.put("高", 0L);
-        priorityDistribution.put("紧急", 0L);
+        
+        // 初始化所有优先级为0
+        List<com.demand.module.dict.entity.Dict> priorityDicts = dictService.getDictByType("priority");
+        for (com.demand.module.dict.entity.Dict dict : priorityDicts) {
+            priorityDistribution.put(dict.getName(), 0L);
+        }
+        
+        // 填充实际数据
         for (Map<String, Object> row : priorityCounts) {
-            Integer priority = (Integer) row.get("priority");
+            String priorityCode = (String) row.get("priority");
             Long count = (Long) row.get("count");
-            String label = switch (priority) {
-                case 0 -> "低";
-                case 1 -> "中";
-                case 2 -> "高";
-                case 3 -> "紧急";
-                default -> "未知";
-            };
-            priorityDistribution.put(label, count);
+            // 从字典获取中文名称
+            String priorityName = dictService.getDictName("priority", priorityCode);
+            priorityDistribution.put(priorityName, count);
         }
         stats.setPriorityDistribution(priorityDistribution);
         
@@ -754,7 +624,9 @@ public class DemandService {
         return stats;
     }
 
-    // 批量分配负责人
+    /**
+     * 批量分配负责人
+     */
     @Transactional
     public void batchAssign(List<Long> ids, Long assigneeId, Long operatorId) {
         if (ids == null || ids.isEmpty()) return;
@@ -765,24 +637,162 @@ public class DemandService {
 
         for (Long id : ids) {
             Demand demand = demandMapper.findById(id);
-            if (demand != null && demand.getStatus() == 1) { // 仅分配审批通过的需求
-                Integer oldStatus = demand.getStatus();
+            if (demand != null && "APPROVED".equals(demand.getStatus())) { // 仅分配审批通过的需求
+                String oldStatus = demand.getStatus();
                 demand.setAssigneeId(assigneeId);
-                demand.setStatus(2); // 批量分配也自动转开发中
+                demand.setStatus("IN_DEVELOPMENT"); // 批量分配也自动转开发中
                 demand.setUpdateTime(LocalDateTime.now());
                 demandMapper.update(demand);
                 
-                recordStatusChange(id, oldStatus, 2, "批量分配负责人", operatorId);
+                recordStatusChange(id, oldStatus, "IN_DEVELOPMENT", "批量分配负责人", operatorId);
                 
                 activityService.saveActivity(id, operatorId, operatorName,
                         "ASSIGN_STATUS", String.format("批量分配给【%s】并进入开发中", assigneeName), null);
                 
-                if (demand.getProposerId() != null) {
-                    notificationService.sendNotification(operatorId, demand.getProposerId(),
+                if (demand.getCreatorId() != null) {
+                    notificationService.sendNotification(operatorId, demand.getCreatorId(),
                             "需求分配通知",
                             String.format("您的需求【%s】已被分配给 %s", demand.getTitle(), assigneeName), 1, id);
                 }
             }
         }
+    }
+
+    /**
+     * 获取项目统计数据
+     *
+     * @param projectId 项目ID
+     * @return 项目统计信息
+     */
+    public com.demand.module.demand.dto.ProjectStatsDTO getProjectStats(Long projectId) {
+        log.debug("获取项目统计: projectId={}", projectId);
+        
+        Map<String, Object> stats = demandMapper.getProjectStats(projectId);
+        if (stats == null) {
+            throw new BusinessException("项目不存在");
+        }
+
+        com.demand.module.demand.dto.ProjectStatsDTO dto = new com.demand.module.demand.dto.ProjectStatsDTO();
+        dto.setProjectId(projectId);
+        
+        // 获取项目名称
+        var project = com.demand.module.project.mapper.ProjectMapper.class;
+        // 这里简化处理，实际应该注入 ProjectMapper
+        
+        dto.setTotalDemands(((Number) stats.get("totalDemands")).longValue());
+        dto.setCompletedDemands(((Number) stats.get("completedDemands")).longValue());
+        dto.setInProgressDemands(((Number) stats.get("inProgressDemands")).longValue());
+        dto.setPendingDemands(((Number) stats.get("pendingDemands")).longValue());
+        dto.setCompletionRate(stats.get("completionRate") != null ? 
+                ((Number) stats.get("completionRate")).doubleValue() : 0.0);
+        dto.setAvgDevelopmentDays(stats.get("avgDevelopmentDays") != null ? 
+                ((Number) stats.get("avgDevelopmentDays")).doubleValue() : 0.0);
+
+        // 获取状态分布
+        List<Map<String, Object>> statusDist = demandMapper.getProjectStatusDistribution(projectId);
+        Map<String, Long> statusMap = statusDist.stream()
+                .collect(Collectors.toMap(
+                        m -> (String) m.get("status"),
+                        m -> ((Number) m.get("count")).longValue()
+                ));
+        dto.setStatusDistribution(statusMap);
+
+        // 获取类型分布
+        List<Map<String, Object>> typeDist = demandMapper.getProjectTypeDistribution(projectId);
+        Map<String, Long> typeMap = typeDist.stream()
+                .collect(Collectors.toMap(
+                        m -> dictService.getDictName("demand_type", (String) m.get("type")),
+                        m -> ((Number) m.get("count")).longValue()
+                ));
+        dto.setTypeDistribution(typeMap);
+
+        return dto;
+    }
+
+    /**
+     * 获取迭代看板数据
+     *
+     * @param iterationId 迭代ID
+     * @return 迭代看板信息
+     */
+    public com.demand.module.demand.dto.IterationKanbanDTO getIterationKanban(Long iterationId) {
+        log.debug("获取迭代看板: iterationId={}", iterationId);
+        
+        Map<String, Object> kanban = demandMapper.getIterationKanban(iterationId);
+        if (kanban == null) {
+            throw new BusinessException("迭代不存在");
+        }
+
+        com.demand.module.demand.dto.IterationKanbanDTO dto = new com.demand.module.demand.dto.IterationKanbanDTO();
+        dto.setIterationId(iterationId);
+        dto.setIterationName((String) kanban.get("iterationName"));
+        
+        if (kanban.get("startDate") != null) {
+            dto.setStartDate(((java.sql.Date) kanban.get("startDate")).toLocalDate());
+        }
+        if (kanban.get("endDate") != null) {
+            dto.setEndDate(((java.sql.Date) kanban.get("endDate")).toLocalDate());
+        }
+        
+        dto.setTotalDemands(((Number) kanban.get("totalDemands")).longValue());
+        dto.setCompletedCount(((Number) kanban.get("completedCount")).longValue());
+        dto.setInProgressCount(((Number) kanban.get("inProgressCount")).longValue());
+        dto.setPendingCount(((Number) kanban.get("pendingCount")).longValue());
+        dto.setProgressPercent(kanban.get("progressPercent") != null ? 
+                ((Number) kanban.get("progressPercent")).doubleValue() : 0.0);
+
+        // 获取状态分布
+        List<Map<String, Object>> statusDist = demandMapper.getIterationStatusDistribution(iterationId);
+        Map<String, Long> statusMap = statusDist.stream()
+                .collect(Collectors.toMap(
+                        m -> dictService.getDictName("demand_status", (String) m.get("status")),
+                        m -> ((Number) m.get("count")).longValue()
+                ));
+        dto.setStatusDistribution(statusMap);
+
+        // 获取负责人分布
+        List<Map<String, Object>> assigneeDist = demandMapper.getIterationAssigneeDistribution(iterationId);
+        Map<String, Long> assigneeMap = assigneeDist.stream()
+                .collect(Collectors.toMap(
+                        m -> (String) m.get("assigneeName"),
+                        m -> ((Number) m.get("count")).longValue()
+                ));
+        dto.setAssigneeDistribution(assigneeMap);
+
+        // 获取每日进度趋势（用于燃尽图）
+        List<Map<String, Object>> dailyProgress = demandMapper.getIterationDailyProgress(iterationId);
+        List<com.demand.module.demand.dto.IterationKanbanDTO.DailyProgressDTO> progressList = 
+                buildDailyProgress(dailyProgress, dto.getTotalDemands());
+        dto.setDailyProgress(progressList);
+
+        return dto;
+    }
+
+    /**
+     * 构建每日进度数据（用于燃尽图）
+     *
+     * @param dailyProgress 每日完成数据
+     * @param totalDemands 总需求数
+     * @return 每日进度列表
+     */
+    private List<com.demand.module.demand.dto.IterationKanbanDTO.DailyProgressDTO> buildDailyProgress(
+            List<Map<String, Object>> dailyProgress, Long totalDemands) {
+        
+        List<com.demand.module.demand.dto.IterationKanbanDTO.DailyProgressDTO> result = new java.util.ArrayList<>();
+        long cumulativeCompleted = 0;
+        
+        for (Map<String, Object> day : dailyProgress) {
+            cumulativeCompleted += ((Number) day.get("dailyCompleted")).longValue();
+            
+            com.demand.module.demand.dto.IterationKanbanDTO.DailyProgressDTO dto = 
+                    new com.demand.module.demand.dto.IterationKanbanDTO.DailyProgressDTO();
+            dto.setDate(((java.sql.Date) day.get("date")).toLocalDate());
+            dto.setCumulativeCompleted(cumulativeCompleted);
+            dto.setRemainingDemands(totalDemands - cumulativeCompleted);
+            
+            result.add(dto);
+        }
+        
+        return result;
     }
 }
