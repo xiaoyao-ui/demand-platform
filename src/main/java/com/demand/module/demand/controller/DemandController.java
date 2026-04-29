@@ -15,10 +15,7 @@ import com.demand.module.demand.dto.*;
 import com.demand.module.demand.entity.Demand;
 import com.demand.module.demand.entity.DemandActivity;
 import com.demand.module.demand.entity.DemandStatusHistory;
-import com.demand.module.demand.service.DemandActivityService;
-import com.demand.module.demand.service.DemandApprovalService;
-import com.demand.module.demand.service.DemandAssignmentService;
-import com.demand.module.demand.service.DemandService;
+import com.demand.module.demand.service.*;
 import com.demand.module.dict.service.DictService;
 import com.demand.module.user.service.PermissionService;
 import com.itextpdf.io.font.PdfEncodings;
@@ -77,6 +74,7 @@ public class DemandController {
     private final PermissionService permissionService;
     private final DemandActivityService demandActivityService;
     private final DictService dictService;
+    private final DemandDependencyService dependencyService;
 
     /**
      * 创建需求
@@ -339,6 +337,20 @@ public class DemandController {
         Long operatorId = permissionService.getCurrentUserId();
         demandService.batchDeleteDemands(ids, operatorId);
         return Result.success("批量删除需求成功");
+    }
+
+    /**
+     * 分析需求变更影响
+     */
+    @Operation(summary = "分析变更影响", description = "基于依赖关系分析需求变更的影响范围")
+    @GetMapping("/{id}/impact-analysis")
+    public Result<com.demand.module.demand.dto.ImpactAnalysisDTO> analyzeImpact(
+            @Parameter(description = "需求ID") @PathVariable Long id,
+            @Parameter(description = "变更类型：STATUS, CONTENT, PRIORITY") 
+            @RequestParam(defaultValue = "CONTENT") String changeType) {
+        com.demand.module.demand.dto.ImpactAnalysisDTO analysis = 
+                dependencyService.analyzeImpact(id, changeType);
+        return Result.success(analysis);
     }
 
     /**
