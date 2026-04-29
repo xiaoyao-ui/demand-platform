@@ -124,4 +124,21 @@ public class Comment {
      * </p>
      */
     private LocalDateTime updateTime;
+
+    /**
+     * 点赞数
+     * <p>
+     * 该评论获得的总点赞数量，从 {@code comment_like} 表统计得到
+     * </p>
+     */
+    private Integer likeCount;
+
+    /**
+     * 当前用户是否已点赞
+     * <p>
+     * 用于前端显示点赞按钮的状态（实心/空心）。
+     * 此字段不存储到数据库，仅在查询时动态填充。
+     * </p>
+     */
+    private Boolean liked;
 }

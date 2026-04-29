@@ -65,6 +65,18 @@ public interface CommentMapper {
     List<Comment> findByDemandId(Long demandId);
 
     /**
+     * 根据 ID 查询评论
+     *
+     * @param id 评论 ID
+     * @return 评论对象
+     */
+    @Select("SELECT c.*, u.real_name AS userName " +
+            "FROM comment c " +
+            "LEFT JOIN user u ON c.user_id = u.id " +
+            "WHERE c.id = #{id}")
+    Comment findById(Long id);
+
+    /**
      * 删除评论
      * <p>
      * 物理删除评论记录。
