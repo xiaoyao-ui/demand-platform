@@ -6,6 +6,7 @@ import com.demand.module.demand.dto.DashboardStats;
 import com.demand.module.demand.dto.DemandApproveDTO;
 import com.demand.module.demand.dto.DemandCreateDTO;
 import com.demand.module.demand.dto.DemandQueryDTO;
+import com.demand.module.dict.service.DictService;
 import com.demand.module.demand.entity.Demand;
 import com.demand.module.demand.entity.DemandStatusHistory;
 import com.demand.module.demand.mapper.DemandMapper;
@@ -36,8 +37,7 @@ public class DemandService {
     private final RoleMapper roleMapper;
     private final DemandActivityService activityService;
     private final DemandTagService demandTagService;
-    private final DemandDependencyService demandDependencyService;
-    private final com.demand.module.dict.service.DictService dictService;
+    private final DictService dictService;
 
     /**
      * 创建需求
@@ -958,5 +958,168 @@ public class DemandService {
         stats.setActualHours(((Number) data.get("actualHours")).doubleValue());
         
         return stats;
+    }
+
+    /**
+     * 批量更新需求状态
+     *
+     * @param ids 需求ID列表
+     * @param newStatus 新状态
+     * @param reason 变更原因
+     * @param operatorId 操作人ID
+     */
+    @Transactional
+    public void batchUpdateStatus(List<Long> ids, String newStatus, String reason, Long operatorId) {
+        log.info("批量更新状态: count={}, newStatus={}, operatorId={}", ids.size(), newStatus, operatorId);
+        
+        User operator = userMapper.findById(operatorId);
+        String operatorName = operator != null ? operator.getRealName() : "系统";
+        
+        int successCount = 0;
+        for (Long id : ids) {
+            try {
+                Demand demand = demandMapper.findById(id);
+                if (demand == null) {
+                    log.warn("需求不存在: id={}", id);
+                    continue;
+                }
+                
+                String oldStatus = demand.getStatus();
+                demand.setStatus(newStatus);
+                demand.setUpdateTime(LocalDateTime.now());
+                demandMapper.update(demand);
+                
+                // 记录状态变更历史
+                recordStatusChange(id, oldStatus, newStatus, reason, operatorId);
+                
+                // 记录操作动态
+                String activityContent = String.format("批量将状态从【%s】修改为【%s】", 
+                        dictService.getDictName("demand_status", oldStatus),
+                        dictService.getDictName("demand_status", newStatus));
+                if (reason != null && !reason.isEmpty()) {
+                    activityContent += "，原因：" + reason;
+                }
+                activityService.saveActivity(id, operatorId, operatorName, "STATUS_CHANGE", activityContent, null);
+                
+                successCount++;
+            } catch (Exception e) {
+                log.error("批量更新状态失败: id={}", id, e);
+            }
+        }
+        
+        log.info("批量更新状态完成: 成功{}/{}", successCount, ids.size());
+    }
+
+    /**
+     * 批量添加标签
+     *
+     * @param ids 需求ID列表
+     * @param tagIds 标签ID列表
+     * @param operatorId 操作人ID
+     */
+    @Transactional
+    public void batchAddTags(List<Long> ids, List<Long> tagIds, Long operatorId) {
+        log.info("批量添加标签: demandCount={}, tagCount={}, operatorId={}", ids.size(), tagIds.size(), operatorId);
+        
+        User operator = userMapper.findById(operatorId);
+        String operatorName = operator != null ? operator.getRealName() : "系统";
+        
+        int successCount = 0;
+        for (Long demandId : ids) {
+            try {
+                Demand demand = demandMapper.findById(demandId);
+                if (demand == null) {
+                    log.warn("需求不存在: id={}", demandId);
+                    continue;
+                }
+                
+                // 使用 DemandTagService 的现有方法
+                demandTagService.addTagsToDemand(demandId, tagIds);
+                
+                // 记录操作动态
+                String activityContent = String.format("批量添加了 %d 个标签", tagIds.size());
+                activityService.saveActivity(demandId, operatorId, operatorName, "TAG_ADD", activityContent, null);
+                
+                successCount++;
+            } catch (Exception e) {
+                log.error("批量添加标签失败: demandId={}", demandId, e);
+            }
+        }
+        
+        log.info("批量添加标签完成: 成功{}/{}", successCount, ids.size());
+    }
+
+    /**
+     * 批量移动需求到其他项目/模块/迭代
+     *
+     * @param ids 需求ID列表
+     * @param targetProjectId 目标项目ID
+     * @param targetModuleId 目标模块ID（可选）
+     * @param targetIterationId 目标迭代ID（可选）
+     * @param operatorId 操作人ID
+     */
+    @Transactional
+    public void batchMoveDemands(List<Long> ids, Long targetProjectId, Long targetModuleId, 
+                                  Long targetIterationId, Long operatorId) {
+        log.info("批量移动需求: count={}, targetProjectId={}, operatorId={}", 
+                ids.size(), targetProjectId, operatorId);
+        
+        User operator = userMapper.findById(operatorId);
+        String operatorName = operator != null ? operator.getRealName() : "系统";
+        
+        int successCount = 0;
+        for (Long id : ids) {
+            try {
+                Demand demand = demandMapper.findById(id);
+                if (demand == null) {
+                    log.warn("需求不存在: id={}", id);
+                    continue;
+                }
+                
+                Long oldProjectId = demand.getProjectId();
+                demand.setProjectId(targetProjectId);
+                if (targetModuleId != null) {
+                    demand.setModuleId(targetModuleId);
+                }
+                if (targetIterationId != null) {
+                    demand.setIterationId(targetIterationId);
+                }
+                demand.setUpdateTime(LocalDateTime.now());
+                demandMapper.update(demand);
+                
+                // 记录操作动态
+                String activityContent = String.format("从项目 %d 移动到项目 %d", oldProjectId, targetProjectId);
+                activityService.saveActivity(id, operatorId, operatorName, "PROJECT_MOVE", activityContent, null);
+                
+                successCount++;
+            } catch (Exception e) {
+                log.error("批量移动需求失败: id={}", id, e);
+            }
+        }
+        
+        log.info("批量移动需求完成: 成功{}/{}", successCount, ids.size());
+    }
+
+    /**
+     * 批量删除需求
+     *
+     * @param ids 需求ID列表
+     * @param operatorId 操作人ID
+     */
+    @Transactional
+    public void batchDeleteDemands(List<Long> ids, Long operatorId) {
+        log.info("批量删除需求: count={}, operatorId={}", ids.size(), operatorId);
+        
+        int successCount = 0;
+        for (Long id : ids) {
+            try {
+                deleteDemand(id, operatorId);
+                successCount++;
+            } catch (Exception e) {
+                log.error("批量删除需求失败: id={}", id, e);
+            }
+        }
+        
+        log.info("批量删除需求完成: 成功{}/{}", successCount, ids.size());
     }
 }

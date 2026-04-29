@@ -56,6 +56,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -288,6 +289,56 @@ public class DemandController {
             @Parameter(description = "项目ID") @PathVariable Long projectId) {
         com.demand.module.demand.dto.WorkloadStatsDTO stats = demandService.getProjectWorkloadStats(projectId);
         return Result.success(stats);
+    }
+
+    /**
+     * 批量更新状态
+     */
+    @Operation(summary = "批量更新状态", description = "批量修改多个需求的状态")
+    @PutMapping("/batch/status")
+    @RequirePermission(roles = {1, 4})
+    public Result<?> batchUpdateStatus(@Valid @RequestBody com.demand.module.demand.dto.BatchUpdateStatusDTO dto) {
+        Long operatorId = permissionService.getCurrentUserId();
+        demandService.batchUpdateStatus(dto.getIds(), dto.getStatus(), dto.getReason(), operatorId);
+        return Result.success("批量更新状态成功");
+    }
+
+    /**
+     * 批量添加标签
+     */
+    @Operation(summary = "批量添加标签", description = "为多个需求批量添加标签")
+    @PostMapping("/batch/tags")
+    @RequirePermission(roles = {1, 2, 3, 4}, requireOwner = true, resourceIdParam = "ids")
+    public Result<?> batchAddTags(@Valid @RequestBody com.demand.module.demand.dto.BatchAddTagsDTO dto) {
+        Long operatorId = permissionService.getCurrentUserId();
+        demandService.batchAddTags(dto.getIds(), dto.getTagIds(), operatorId);
+        return Result.success("批量添加标签成功");
+    }
+
+    /**
+     * 批量移动需求
+     */
+    @Operation(summary = "批量移动需求", description = "将多个需求移动到其他项目/模块/迭代")
+    @PutMapping("/batch/move")
+    @RequirePermission(roles = {1, 4})
+    public Result<?> batchMoveDemands(@Valid @RequestBody com.demand.module.demand.dto.BatchMoveDemandDTO dto) {
+        Long operatorId = permissionService.getCurrentUserId();
+        demandService.batchMoveDemands(dto.getIds(), dto.getTargetProjectId(), 
+                dto.getTargetModuleId(), dto.getTargetIterationId(), operatorId);
+        return Result.success("批量移动需求成功");
+    }
+
+    /**
+     * 批量删除需求
+     */
+    @Operation(summary = "批量删除需求", description = "批量删除多个需求")
+    @DeleteMapping("/batch")
+    @RequirePermission(roles = {1, 2}, requireOwner = true, resourceIdParam = "ids")
+    public Result<?> batchDeleteDemands(@RequestBody Map<String, List<Long>> params) {
+        List<Long> ids = params.get("ids");
+        Long operatorId = permissionService.getCurrentUserId();
+        demandService.batchDeleteDemands(ids, operatorId);
+        return Result.success("批量删除需求成功");
     }
 
     /**
