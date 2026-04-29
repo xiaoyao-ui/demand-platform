@@ -40,4 +40,12 @@
         WHERE p.id = #{id}
     </select>
 
+    <!-- 查询所有项目 -->
+    <select id="selectAll" resultMap="ProjectResultMap">
+        SELECT p.*, u.real_name AS owner_name
+        FROM sys_project p
+        LEFT JOIN sys_user u ON p.owner_id = u.id
+        ORDER BY p.create_time DESC
+    </select>
+
 </mapper>

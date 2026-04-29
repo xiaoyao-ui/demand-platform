@@ -55,6 +55,19 @@ public class Project {
 
     /**
      * 项目负责人名称
+     * <p>
+     * 从 {@code sys_user.real_name} 关联查询得到，用于前端展示
+     * </p>
      */
     private String ownerName;
+
+    /**
+     * 项目负责人名称（别名，与 ownerName 相同）
+     * <p>
+     * 为了保持命名一致性，提供 managerName 作为 ownerName 的别名
+     * </p>
+     */
+    public String getManagerName() {
+        return this.ownerName;
+    }
 }
