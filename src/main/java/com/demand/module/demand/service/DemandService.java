@@ -38,6 +38,7 @@ public class DemandService {
     private final DemandActivityService activityService;
     private final DemandTagService demandTagService;
     private final DictService dictService;
+    private final DemandVersionService demandVersionService;
 
     /**
      * 创建需求
@@ -119,7 +120,14 @@ public class DemandService {
             throw new BusinessException("只有草稿或被拒绝的需求可以编辑");
         }
 
-        // 3. 处理特殊状态的自动填充
+        // 3. 检测是否有重大变更（需要创建版本快照）
+        boolean hasMajorChange = detectMajorChange(existDemand, demand);
+        if (hasMajorChange) {
+            // 创建版本快照
+            demandVersionService.createVersionSnapshot(id, operatorId, "需求内容变更");
+        }
+
+        // 4. 处理特殊状态的自动填充
         String oldStatus = existDemand.getStatus();
         String newStatus = demand.getStatus();
         
@@ -128,15 +136,47 @@ public class DemandService {
             demand.setCompleteTime(LocalDateTime.now());
         }
 
-        // 4. 执行更新
+        // 5. 执行更新
         demand.setId(id);
         demand.setUpdateTime(LocalDateTime.now());
         demandMapper.update(demand);
 
-        // 5. 如果状态发生变更，记录变更历史和操作动态
+        // 6. 如果状态发生变更，记录变更历史和操作动态
         if (oldStatus != null && newStatus != null && !oldStatus.equals(newStatus)) {
             handleStatusChange(id, existDemand.getTitle(), oldStatus, newStatus, operatorId);
         }
+    }
+
+    /**
+     * 检测是否有重大变更
+     */
+    private boolean detectMajorChange(Demand oldDemand, Demand newDemand) {
+        // 标题、描述、类型、优先级、模块、工时等字段的变更视为重大变更
+        return !Objects.equals(oldDemand.getTitle(), newDemand.getTitle())
+                || !Objects.equals(oldDemand.getDescription(), newDemand.getDescription())
+                || !Objects.equals(oldDemand.getType(), newDemand.getType())
+                || !Objects.equals(oldDemand.getPriority(), newDemand.getPriority())
+                || !Objects.equals(oldDemand.getModuleId(), newDemand.getModuleId())
+                || !Objects.equals(oldDemand.getEstimatedHours(), newDemand.getEstimatedHours())
+                || !Objects.equals(oldDemand.getAcceptanceCriteria(), newDemand.getAcceptanceCriteria());
+    }
+
+    /**
+     * 获取需求版本历史
+     */
+    public List<com.demand.module.demand.dto.DemandVersionDTO> getDemandVersions(Long demandId) {
+        log.debug("获取需求版本历史: demandId={}", demandId);
+        return demandVersionService.getVersionsByDemandId(demandId);
+    }
+
+    /**
+     * 回滚需求到指定版本
+     */
+    @Transactional
+    public Integer rollbackDemandVersion(Long demandId, Integer versionNumber, Long operatorId) {
+        log.info("回滚需求版本: demandId={}, versionNumber={}, operatorId={}",
+                demandId, versionNumber, operatorId);
+        return demandVersionService.rollbackToVersion(demandId, versionNumber, operatorId);
     }
 
     /**
