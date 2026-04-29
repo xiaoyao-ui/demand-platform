@@ -269,6 +269,28 @@ public class DemandController {
     }
 
     /**
+     * 获取项目看板
+     */
+    @Operation(summary = "获取项目看板", description = "获取项目的需求看板数据，按状态分组")
+    @GetMapping("/project/{projectId}/kanban")
+    public Result<com.demand.module.demand.dto.DemandKanbanDTO> getProjectKanban(
+            @Parameter(description = "项目ID") @PathVariable Long projectId) {
+        com.demand.module.demand.dto.DemandKanbanDTO kanban = demandService.getProjectKanban(projectId);
+        return Result.success(kanban);
+    }
+
+    /**
+     * 获取项目工时统计
+     */
+    @Operation(summary = "获取项目工时统计", description = "获取项目的工时统计数据，包括总体统计、人员分布、类型分布")
+    @GetMapping("/project/{projectId}/workload/stats")
+    public Result<com.demand.module.demand.dto.WorkloadStatsDTO> getProjectWorkloadStats(
+            @Parameter(description = "项目ID") @PathVariable Long projectId) {
+        com.demand.module.demand.dto.WorkloadStatsDTO stats = demandService.getProjectWorkloadStats(projectId);
+        return Result.success(stats);
+    }
+
+    /**
      * 导出需求列表 Excel
      */
     @Operation(summary = "导出需求列表 Excel", description = "根据查询条件导出需求数据为 Excel 文件")

@@ -413,4 +413,82 @@
         ORDER BY date ASC
     </select>
 
+    <!-- 获取项目看板数据（按状态分组） -->
+    <select id="getProjectKanban" resultType="java.util.Map">
+        SELECT
+            d.id,
+            d.title,
+            d.priority,
+            d.status,
+            d.assignee_id,
+            d.expected_end_date,
+            d.story_points,
+            u_assignee.real_name AS assigneeName,
+            u_creator.real_name AS creatorName
+        FROM demand d
+        LEFT JOIN sys_user u_assignee ON d.assignee_id = u_assignee.id
+        LEFT JOIN sys_user u_creator ON d.creator_id = u_creator.id
+        WHERE d.project_id = #{projectId}
+          AND d.delete_time IS NULL
+        ORDER BY d.create_time DESC
+    </select>
+
+    <!-- 获取项目工时统计 -->
+    <select id="getProjectWorkloadStats" resultType="java.util.Map">
+        SELECT
+            COUNT(*) as demandCount,
+            SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) as completedDemandCount,
+            COALESCE(SUM(estimated_hours), 0) as totalEstimatedHours,
+            COALESCE(SUM(actual_hours), 0) as totalActualHours,
+            CASE
+                WHEN SUM(estimated_hours) > 0 THEN
+                    ROUND(SUM(actual_hours) * 100.0 / SUM(estimated_hours), 2)
+                ELSE 0
+            END as completionRate,
+            CASE
+                WHEN COUNT(DISTINCT assignee_id) > 0 THEN
+                    ROUND(SUM(actual_hours) / COUNT(DISTINCT assignee_id), 2)
+                ELSE 0
+            END as avgHoursPerPerson
+        FROM demand
+        WHERE project_id = #{projectId}
+          AND delete_time IS NULL
+    </select>
+
+    <!-- 获取项目中各人员的工时统计 -->
+    <select id="getUserWorkloadStats" resultType="java.util.Map">
+        SELECT
+            d.assignee_id AS userId,
+            u.real_name AS userName,
+            COUNT(*) as demandCount,
+            COALESCE(SUM(d.estimated_hours), 0) as estimatedHours,
+            COALESCE(SUM(d.actual_hours), 0) as actualHours,
+            CASE
+                WHEN SUM(d.estimated_hours) > 0 THEN
+                    ROUND(SUM(d.actual_hours) * 100.0 / SUM(d.estimated_hours), 2)
+                ELSE 0
+            END as completionRate
+        FROM demand d
+        LEFT JOIN sys_user u ON d.assignee_id = u.id
+        WHERE d.project_id = #{projectId}
+          AND d.assignee_id IS NOT NULL
+          AND d.delete_time IS NULL
+        GROUP BY d.assignee_id, u.real_name
+        ORDER BY actualHours DESC
+    </select>
+
+    <!-- 获取项目中各类型的工时统计 -->
+    <select id="getTypeWorkloadStats" resultType="java.util.Map">
+        SELECT
+            type,
+            COUNT(*) as count,
+            COALESCE(SUM(estimated_hours), 0) as estimatedHours,
+            COALESCE(SUM(actual_hours), 0) as actualHours
+        FROM demand
+        WHERE project_id = #{projectId}
+          AND delete_time IS NULL
+        GROUP BY type
+        ORDER BY count DESC
+    </select>
+
 </mapper>

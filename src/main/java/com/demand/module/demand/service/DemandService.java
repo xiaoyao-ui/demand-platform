@@ -795,4 +795,168 @@ public class DemandService {
         
         return result;
     }
+
+    /**
+     * 获取项目看板数据
+     *
+     * @param projectId 项目ID
+     * @return 看板数据
+     */
+    public com.demand.module.demand.dto.DemandKanbanDTO getProjectKanban(Long projectId) {
+        log.debug("获取项目看板: projectId={}", projectId);
+        
+        // 1. 查询项目下所有需求
+        List<Map<String, Object>> demands = demandMapper.getProjectKanban(projectId);
+        
+        // 2. 按状态分组
+        Map<String, List<Map<String, Object>>> groupedByStatus = demands.stream()
+                .collect(Collectors.groupingBy(d -> (String) d.get("status")));
+        
+        // 3. 定义看板列的顺序
+        List<String> statusOrder = List.of(
+            "DRAFT", "PENDING_REVIEW", "APPROVED", 
+            "IN_DEVELOPMENT", "IN_TEST", "COMPLETED", "REJECTED"
+        );
+        
+        // 4. 构建看板列
+        List<com.demand.module.demand.dto.DemandKanbanDTO.KanbanColumn> columns = new java.util.ArrayList<>();
+        
+        for (String status : statusOrder) {
+            List<Map<String, Object>> statusDemands = groupedByStatus.getOrDefault(status, List.of());
+            
+            if (!statusDemands.isEmpty()) {
+                com.demand.module.demand.dto.DemandKanbanDTO.KanbanColumn column = 
+                        new com.demand.module.demand.dto.DemandKanbanDTO.KanbanColumn();
+                column.setStatus(status);
+                column.setStatusName(dictService.getDictName("demand_status", status));
+                column.setCount(statusDemands.size());
+                
+                // 转换为卡片
+                List<com.demand.module.demand.dto.DemandKanbanDTO.KanbanCard> cards = statusDemands.stream()
+                        .map(this::convertToKanbanCard)
+                        .collect(Collectors.toList());
+                column.setCards(cards);
+                
+                columns.add(column);
+            }
+        }
+        
+        // 5. 组装结果
+        com.demand.module.demand.dto.DemandKanbanDTO kanban = new com.demand.module.demand.dto.DemandKanbanDTO();
+        kanban.setProjectId(projectId);
+        kanban.setColumns(columns);
+        
+        return kanban;
+    }
+
+    /**
+     * 转换需求为看板卡片
+     *
+     * @param demand 需求数据 Map
+     * @return 看板卡片
+     */
+    private com.demand.module.demand.dto.DemandKanbanDTO.KanbanCard convertToKanbanCard(Map<String, Object> demand) {
+        com.demand.module.demand.dto.DemandKanbanDTO.KanbanCard card = 
+                new com.demand.module.demand.dto.DemandKanbanDTO.KanbanCard();
+        
+        card.setId(((Number) demand.get("id")).longValue());
+        card.setTitle((String) demand.get("title"));
+        card.setPriority((String) demand.get("priority"));
+        card.setAssigneeId(demand.get("assignee_id") != null ? 
+                ((Number) demand.get("assignee_id")).longValue() : null);
+        card.setAssigneeName((String) demand.get("assigneeName"));
+        card.setCreatorName((String) demand.get("creatorName"));
+        
+        if (demand.get("expected_end_date") != null) {
+            card.setExpectedEndDate(((java.sql.Date) demand.get("expected_end_date")).toLocalDate());
+        }
+        
+        card.setStoryPoints(demand.get("story_points") != null ? 
+                ((Number) demand.get("story_points")).intValue() : null);
+        
+        return card;
+    }
+
+    /**
+     * 获取项目工时统计
+     *
+     * @param projectId 项目ID
+     * @return 工时统计数据
+     */
+    public com.demand.module.demand.dto.WorkloadStatsDTO getProjectWorkloadStats(Long projectId) {
+        log.debug("获取项目工时统计: projectId={}", projectId);
+        
+        // 1. 获取总体统计
+        Map<String, Object> stats = demandMapper.getProjectWorkloadStats(projectId);
+        
+        com.demand.module.demand.dto.WorkloadStatsDTO dto = new com.demand.module.demand.dto.WorkloadStatsDTO();
+        dto.setDimension("project");
+        dto.setProjectId(projectId);
+        dto.setTotalEstimatedHours(stats.get("totalEstimatedHours") != null ? 
+                ((Number) stats.get("totalEstimatedHours")).doubleValue() : 0.0);
+        dto.setTotalActualHours(stats.get("totalActualHours") != null ? 
+                ((Number) stats.get("totalActualHours")).doubleValue() : 0.0);
+        dto.setCompletionRate(stats.get("completionRate") != null ? 
+                ((Number) stats.get("completionRate")).doubleValue() : 0.0);
+        dto.setDemandCount(((Number) stats.get("demandCount")).longValue());
+        dto.setCompletedDemandCount(((Number) stats.get("completedDemandCount")).longValue());
+        dto.setAvgHoursPerPerson(stats.get("avgHoursPerPerson") != null ? 
+                ((Number) stats.get("avgHoursPerPerson")).doubleValue() : 0.0);
+        
+        // 2. 获取人员工时统计
+        List<Map<String, Object>> userStatsList = demandMapper.getUserWorkloadStats(projectId);
+        List<com.demand.module.demand.dto.WorkloadStatsDTO.UserWorkloadStats> userStats = userStatsList.stream()
+                .map(this::convertToUserWorkloadStats)
+                .collect(Collectors.toList());
+        dto.setUserStats(userStats);
+        
+        // 3. 获取类型工时统计
+        List<Map<String, Object>> typeStatsList = demandMapper.getTypeWorkloadStats(projectId);
+        Map<String, com.demand.module.demand.dto.WorkloadStatsDTO.TypeWorkloadStats> typeStats = typeStatsList.stream()
+                .collect(Collectors.toMap(
+                        m -> dictService.getDictName("demand_type", (String) m.get("type")),
+                        this::convertToTypeWorkloadStats
+                ));
+        dto.setTypeStats(typeStats);
+        
+        return dto;
+    }
+
+    /**
+     * 转换人员工时统计
+     *
+     * @param data 原始数据
+     * @return 人员工时统计对象
+     */
+    private com.demand.module.demand.dto.WorkloadStatsDTO.UserWorkloadStats convertToUserWorkloadStats(Map<String, Object> data) {
+        com.demand.module.demand.dto.WorkloadStatsDTO.UserWorkloadStats stats = 
+                new com.demand.module.demand.dto.WorkloadStatsDTO.UserWorkloadStats();
+        
+        stats.setUserId(data.get("userId") != null ? ((Number) data.get("userId")).longValue() : null);
+        stats.setUserName((String) data.get("userName"));
+        stats.setDemandCount(((Number) data.get("demandCount")).longValue());
+        stats.setEstimatedHours(((Number) data.get("estimatedHours")).doubleValue());
+        stats.setActualHours(((Number) data.get("actualHours")).doubleValue());
+        stats.setCompletionRate(((Number) data.get("completionRate")).doubleValue());
+        
+        return stats;
+    }
+
+    /**
+     * 转换类型工时统计
+     *
+     * @param data 原始数据
+     * @return 类型工时统计对象
+     */
+    private com.demand.module.demand.dto.WorkloadStatsDTO.TypeWorkloadStats convertToTypeWorkloadStats(Map<String, Object> data) {
+        com.demand.module.demand.dto.WorkloadStatsDTO.TypeWorkloadStats stats = 
+                new com.demand.module.demand.dto.WorkloadStatsDTO.TypeWorkloadStats();
+        
+        stats.setType((String) data.get("type"));
+        stats.setCount(((Number) data.get("count")).longValue());
+        stats.setEstimatedHours(((Number) data.get("estimatedHours")).doubleValue());
+        stats.setActualHours(((Number) data.get("actualHours")).doubleValue());
+        
+        return stats;
+    }
 }

@@ -145,6 +145,41 @@ public interface DemandMapper extends BaseMapper<Demand> {
 
     /**
      * 获取迭代每日完成趋势（用于燃尽图）
+     *
+     * @param iterationId 迭代ID
+     * @return 每日进度数据
      */
     List<Map<String, Object>> getIterationDailyProgress(@Param("iterationId") Long iterationId);
+
+    /**
+     * 获取项目看板数据（按状态分组）
+     *
+     * @param projectId 项目ID
+     * @return 看板数据
+     */
+    List<Map<String, Object>> getProjectKanban(@Param("projectId") Long projectId);
+
+    /**
+     * 获取项目工时统计
+     *
+     * @param projectId 项目ID
+     * @return 工时统计数据
+     */
+    Map<String, Object> getProjectWorkloadStats(@Param("projectId") Long projectId);
+
+    /**
+     * 获取项目中各人员的工时统计
+     *
+     * @param projectId 项目ID
+     * @return 人员工时列表
+     */
+    List<Map<String, Object>> getUserWorkloadStats(@Param("projectId") Long projectId);
+
+    /**
+     * 获取项目中各类型的工时统计
+     *
+     * @param projectId 项目ID
+     * @return 类型工时列表
+     */
+    List<Map<String, Object>> getTypeWorkloadStats(@Param("projectId") Long projectId);
 }
