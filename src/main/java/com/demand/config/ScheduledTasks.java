@@ -3,6 +3,7 @@ package com.demand.config;
 import com.demand.common.NotificationTypeEnum;
 import com.demand.module.demand.entity.Demand;
 import com.demand.module.demand.mapper.DemandMapper;
+import com.demand.module.demand.service.DemandQualityScoreService;
 import com.demand.module.notification.service.NotificationService;
 import com.demand.module.user.entity.User;
 import com.demand.module.user.mapper.OperationLogMapper;
@@ -68,6 +69,11 @@ public class ScheduledTasks {
      * 通知服务，用于发送审批提醒
      */
     private final NotificationService notificationService;
+
+    /**
+     * 需求质量评分服务，用于计算需求质量分数
+     */
+    private final DemandQualityScoreService qualityScoreService;
 
     /**
      * 清理过期的验证码
@@ -284,5 +290,22 @@ public class ScheduledTasks {
         }
         
         return content.toString();
+    }
+
+    /**
+     * 定期检查需求质量
+     * <p>
+     * 每天凌晨 2 点检查所有需求的质量评分，发现低质量需求并提醒改进。
+     * </p>
+     */
+    @Scheduled(cron = "0 0 2 * * ?")
+    public void checkDemandQuality() {
+        log.info("开始执行需求质量检查定时任务...");
+        try {
+            qualityScoreService.checkAllDemandsQuality();
+            log.info("需求质量检查完成");
+        } catch (Exception e) {
+            log.error("需求质量检查失败", e);
+        }
     }
 }

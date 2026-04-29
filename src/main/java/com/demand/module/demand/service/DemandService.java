@@ -6,6 +6,7 @@ import com.demand.module.demand.dto.DashboardStats;
 import com.demand.module.demand.dto.DemandApproveDTO;
 import com.demand.module.demand.dto.DemandCreateDTO;
 import com.demand.module.demand.dto.DemandQueryDTO;
+import com.demand.module.demand.entity.DemandQualityScore;
 import com.demand.module.dict.service.DictService;
 import com.demand.module.demand.entity.Demand;
 import com.demand.module.demand.entity.DemandStatusHistory;
@@ -39,6 +40,7 @@ public class DemandService {
     private final DemandTagService demandTagService;
     private final DictService dictService;
     private final DemandVersionService demandVersionService;
+    private final DemandQualityScoreService qualityScoreService;
 
     /**
      * 创建需求
@@ -141,7 +143,14 @@ public class DemandService {
         demand.setUpdateTime(LocalDateTime.now());
         demandMapper.update(demand);
 
-        // 6. 如果状态发生变更，记录变更历史和操作动态
+        // 6. 重新计算质量评分
+        try {
+            qualityScoreService.calculateScore(id);
+        } catch (Exception e) {
+            log.warn("计算需求质量评分失败: demandId={}", id, e);
+        }
+
+        // 7. 如果状态发生变更，记录变更历史和操作动态
         if (oldStatus != null && newStatus != null && !oldStatus.equals(newStatus)) {
             handleStatusChange(id, existDemand.getTitle(), oldStatus, newStatus, operatorId);
         }
@@ -1161,5 +1170,13 @@ public class DemandService {
         }
         
         log.info("批量删除需求完成: 成功{}/{}", successCount, ids.size());
+    }
+
+    /**
+     * 获取需求质量评分
+     */
+    public DemandQualityScore getDemandQualityScore(Long demandId) {
+        log.debug("获取需求质量评分: demandId={}", demandId);
+        return qualityScoreService.calculateScore(demandId);
     }
 }
