@@ -1,5 +1,6 @@
 package com.demand.module.demand.mapper;
 
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.demand.module.demand.entity.DemandActivity;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -30,7 +31,7 @@ import java.util.List;
  * </ul>
  */
 @Mapper
-public interface DemandActivityMapper {
+public interface DemandActivityMapper extends BaseMapper<DemandActivity> {
 
     /**
      * 插入需求动态记录
@@ -57,7 +58,7 @@ public interface DemandActivityMapper {
      *
      * @param activity 动态对象
      */
-    void insert(DemandActivity activity);
+    int insert(DemandActivity activity);
 
     /**
      * 查询需求的所有动态记录

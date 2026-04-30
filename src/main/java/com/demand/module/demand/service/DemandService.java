@@ -1,9 +1,12 @@
 package com.demand.module.demand.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.demand.common.PageResult;
 import com.demand.exception.BusinessException;
 import com.demand.module.demand.dto.*;
+import com.demand.module.demand.entity.DemandActivity;
 import com.demand.module.demand.entity.DemandQualityScore;
+import com.demand.module.demand.mapper.DemandActivityMapper;
 import com.demand.module.dict.service.DictService;
 import com.demand.module.demand.entity.Demand;
 import com.demand.module.demand.entity.DemandStatusHistory;
@@ -41,6 +44,7 @@ public class DemandService {
     private final DemandVersionService demandVersionService;
     private final DemandQualityScoreService qualityScoreService;
     private final ProjectMapper projectMapper;
+    private final DemandActivityMapper activityMapper;
 
     /**
      * 创建需求
@@ -1150,5 +1154,127 @@ public class DemandService {
     public DemandQualityScore getDemandQualityScore(Long demandId) {
         log.debug("获取需求质量评分: demandId={}", demandId);
         return qualityScoreService.calculateScore(demandId);
+    }
+
+    /**
+     * 获取待办事项列表
+     */
+    public List<TodoItemDTO> getTodoList(Long userId, int limit) {
+        List<TodoItemDTO> todos = new ArrayList<>();
+
+        // 1. 待审批的需求
+        List<Demand> pendingDemands = demandMapper.selectList(
+                new LambdaQueryWrapper<Demand>()
+                        .eq(Demand::getStatus, 0) // 待审批
+                        .last("LIMIT " + limit)
+        );
+
+        for (Demand demand : pendingDemands) {
+            TodoItemDTO todo = new TodoItemDTO();
+            todo.setId(demand.getId());
+            todo.setType("approval");
+            todo.setIcon("Document");
+            todo.setTitle("需求审批");
+            todo.setDescription("待审批: " + demand.getTitle());
+            todo.setPriority("high");
+            todo.setRelatedId(demand.getId());
+            todo.setCreateTime(demand.getCreateTime().toString());
+            todos.add(todo);
+        }
+
+        // 2. 分配给当前用户的需求
+        List<Demand> assignedDemands = demandMapper.selectList(
+                new LambdaQueryWrapper<Demand>()
+                        .eq(Demand::getAssigneeId, userId)
+                        .in(Demand::getStatus, 2, 3) // 开发中、测试中
+                        .last("LIMIT " + limit)
+        );
+
+        for (Demand demand : assignedDemands) {
+            TodoItemDTO todo = new TodoItemDTO();
+            todo.setId(demand.getId());
+            todo.setType("task");
+            todo.setIcon("Tools");
+            todo.setTitle("任务处理");
+            todo.setDescription("处理需求: " + demand.getTitle());
+            todo.setPriority("normal");
+            todo.setRelatedId(demand.getId());
+            todo.setCreateTime(demand.getUpdateTime().toString());
+            todos.add(todo);
+        }
+
+        // 按时间排序并限制数量
+        return todos.stream()
+                .sorted((a, b) -> b.getCreateTime().compareTo(a.getCreateTime()))
+                .limit(limit)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 获取最近活动
+     */
+    /**
+     * 获取最近活动
+     */
+    public List<ActivityItemDTO> getRecentActivities(int limit) {
+        List<ActivityItemDTO> activities = new ArrayList<>();
+
+        // 从需求活动表中获取最近的活动
+        List<DemandActivity> recentActivities = activityMapper.selectList(
+                new LambdaQueryWrapper<DemandActivity>()
+                        .orderByDesc(DemandActivity::getCreateTime)
+                        .last("LIMIT " + limit)
+        );
+
+        for (DemandActivity activity : recentActivities) {
+            ActivityItemDTO item = new ActivityItemDTO();
+
+            // 直接使用content字段作为活动内容
+            String userName = activity.getOperatorName() != null ? activity.getOperatorName() : "用户";
+            String actionDesc = getActivityActionDesc(activity.getActionType());
+
+            item.setContent(userName + " " + actionDesc);
+            item.setTime(activity.getCreateTime().toString());
+
+            activities.add(item);
+        }
+
+        return activities;
+    }
+
+    /**
+     * 获取操作描述
+     */
+    private String getActivityActionDesc(String actionType) {
+        if (actionType == null) {
+            return "操作了需求";
+        }
+
+        switch (actionType) {
+            case "CREATE":
+                return "创建了需求";
+            case "SUBMIT":
+                return "提交了需求审核";
+            case "APPROVE":
+                return "审批通过了需求";
+            case "REJECT":
+                return "拒绝了需求";
+            case "ASSIGN":
+                return "分配了需求";
+            case "STATUS_CHANGE":
+                return "变更了需求状态";
+            case "UPDATE":
+                return "更新了需求";
+            case "ATTACHMENT":
+                return "上传了附件";
+            case "ATTACHMENT_DELETE":
+                return "删除了附件";
+            case "WITHDRAW":
+                return "撤回了需求";
+            case "DELETE":
+                return "删除了需求";
+            default:
+                return "操作了需求";
+        }
     }
 }

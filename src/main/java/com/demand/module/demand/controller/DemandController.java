@@ -199,6 +199,29 @@ public class DemandController {
     }
 
     /**
+     * 获取待办事项列表
+     */
+    @Operation(summary = "获取待办事项", description = "获取当前用户的待办事项（待审批、已分配等）")
+    @GetMapping("/todo/list")
+    public Result<List<TodoItemDTO>> getTodoList(
+            @Parameter(description = "限制数量") @RequestParam(defaultValue = "5") int limit) {
+        Long currentUserId = permissionService.getCurrentUserId();
+        List<TodoItemDTO> todos = demandService.getTodoList(currentUserId, limit);
+        return Result.success(todos);
+    }
+
+    /**
+     * 获取最近活动
+     */
+    @Operation(summary = "获取最近活动", description = "获取系统最近的活动记录")
+    @GetMapping("/activity/recent")
+    public Result<List<ActivityItemDTO>> getRecentActivities(
+            @Parameter(description = "限制数量") @RequestParam(defaultValue = "8") int limit) {
+        List<ActivityItemDTO> activities = demandService.getRecentActivities(limit);
+        return Result.success(activities);
+    }
+
+    /**
      * 提交需求审核
      */
     @Operation(summary = "提交需求审核", description = "将草稿状态的需求提交审核")

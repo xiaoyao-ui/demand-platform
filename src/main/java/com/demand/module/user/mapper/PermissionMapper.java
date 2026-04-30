@@ -15,6 +15,11 @@ public interface PermissionMapper extends BaseMapper<Permission> {
     List<String> selectPermissionKeysByUserId(@Param("userId") Long userId);
 
     /**
+     * 根据用户ID查询完整的权限列表（包含所有字段）
+     */
+    List<Permission> selectPermissionsByUserId(@Param("userId") Long userId);
+
+    /**
      * 根据角色ID查询系统访问权限信息
      */
     List<Permission> selectPermissionsByRoleId(@Param("roleId") Long roleId);

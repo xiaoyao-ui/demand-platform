@@ -3,36 +3,24 @@ package com.demand.module.user.controller;
 import com.demand.common.Result;
 import com.demand.config.PermissionContext;
 import com.demand.config.RequirePermission;
+import com.demand.module.user.entity.Permission;
+import com.demand.module.user.mapper.PermissionMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * 角色权限管理控制器
  * <p>
- * 提供角色信息查询和动态菜单生成功能。
- * 根据用户角色返回可访问的菜单列表，实现前端路由级别的权限控制。
+ * 提供角色信息查询、动态菜单生成和角色权限配置功能。
  * </p>
- * 
- * <h3>角色定义：</h3>
- * <ul>
- *   <li><b>0 - 只读用户</b>：仅可查看需求、附件等公开信息</li>
- *   <li><b>1 - 普通用户</b>：可创建、编辑、删除自己的需求</li>
- *   <li><b>2 - 管理员</b>：系统最高权限，可管理用户、角色、日志等</li>
- *   <li><b>3 - 项目经理</b>：可审批需求、分配负责人、查看所有需求</li>
- * </ul>
- * 
- * <h3>典型应用场景：</h3>
- * <ul>
- *   <li>前端登录后调用 {@code /api/role/menus} 获取动态菜单</li>
- *   <li>根据返回的菜单列表渲染侧边栏导航</li>
- *   <li>隐藏无权限的按钮和操作入口</li>
- * </ul>
  */
 @Slf4j
 @Tag(name = "角色权限管理", description = "角色和权限管理接口")
@@ -41,142 +29,146 @@ import java.util.*;
 @RequiredArgsConstructor
 public class RoleController {
 
-    /**
-     * 权限上下文，用于获取当前用户角色
-     */
     private final PermissionContext permissionContext;
+    private final PermissionMapper permissionMapper;
+    private final JdbcTemplate jdbcTemplate;
 
     /**
      * 获取所有角色列表
-     * <p>
-     * 返回系统中预定义的 4 种角色及其权限配置，
-     * 用于前端展示角色说明或下拉选择。
-     * </p>
-     *
-     * @return 角色列表（包含 code、name、description、permissions、menus）
      */
-    @Operation(summary = "获取所有角色列表", description = "获取系统中所有预定义的角色信息")
+    @Operation(summary = "获取所有角色列表", description = "获取系统中所有角色信息")
     @GetMapping("/list")
     public Result<List<Map<String, Object>>> getRoleList() {
         List<Map<String, Object>> roles = new ArrayList<>();
-        
-        // 只读用户
-        Map<String, Object> readOnly = new HashMap<>();
-        readOnly.put("code", 0);
-        readOnly.put("name", "只读用户");
-        readOnly.put("description", "仅可查看信息，无编辑权限");
-        readOnly.put("permissions", Arrays.asList("查看需求", "查看附件", "查看用户"));
-        readOnly.put("menus", Arrays.asList("/dashboard", "/demand"));
-        roles.add(readOnly);
-        
-        // 普通用户
+
+        Map<String, Object> superAdmin = new HashMap<>();
+        superAdmin.put("id", 1);
+        superAdmin.put("roleName", "超级管理员");
+        superAdmin.put("roleKey", "SUPER_ADMIN");
+        superAdmin.put("description", "拥有所有权限");
+        superAdmin.put("isSystem", true);
+        roles.add(superAdmin);
+
         Map<String, Object> user = new HashMap<>();
-        user.put("code", 1);
-        user.put("name", "普通用户");
-        user.put("description", "可创建和管理自己的需求");
-        user.put("permissions", Arrays.asList("创建需求", "编辑草稿", "删除草稿", "撤回需求", "查看需求", "查看附件", "评论需求"));
-        user.put("menus", Arrays.asList("/dashboard", "/demand"));
+        user.put("id", 2);
+        user.put("roleName", "普通用户");
+        user.put("roleKey", "USER");
+        user.put("description", "可以提出需求");
+        user.put("isSystem", true);
         roles.add(user);
-        
-        // 管理员
-        Map<String, Object> admin = new HashMap<>();
-        admin.put("code", 2);
-        admin.put("name", "管理员");
-        admin.put("description", "系统最高权限，管理所有资源");
-        admin.put("permissions", Arrays.asList("所有权限", "用户管理", "角色管理", "系统配置", "数据导出", "日志查看"));
-        admin.put("menus", Arrays.asList("/dashboard", "/demand", "/user", "/role"));
-        roles.add(admin);
-        
-        // 项目经理
-        Map<String, Object> pm = new HashMap<>();
-        pm.put("code", 3);
-        pm.put("name", "项目经理");
-        pm.put("description", "可审批和分配需求");
-        pm.put("permissions", Arrays.asList("审批需求", "分配负责人", "查看所有需求", "编辑需求", "查看附件", "评论需求"));
-        pm.put("menus", Arrays.asList("/dashboard", "/demand"));
-        roles.add(pm);
-        
+
+        Map<String, Object> productManager = new HashMap<>();
+        productManager.put("id", 3);
+        productManager.put("roleName", "产品经理");
+        productManager.put("roleKey", "PRODUCT_MANAGER");
+        productManager.put("description", "负责需求管理和审批");
+        productManager.put("isSystem", true);
+        roles.add(productManager);
+
+        Map<String, Object> projectManager = new HashMap<>();
+        projectManager.put("id", 4);
+        projectManager.put("roleName", "项目经理");
+        projectManager.put("roleKey", "PROJECT_MANAGER");
+        projectManager.put("description", "负责项目管理和分配");
+        projectManager.put("isSystem", true);
+        roles.add(projectManager);
+
+        Map<String, Object> developer = new HashMap<>();
+        developer.put("id", 5);
+        developer.put("roleName", "开发工程师");
+        developer.put("roleKey", "DEVELOPER");
+        developer.put("description", "负责需求开发");
+        developer.put("isSystem", true);
+        roles.add(developer);
+
+        Map<String, Object> implementer = new HashMap<>();
+        implementer.put("id", 6);
+        implementer.put("roleName", "实施/测试");
+        implementer.put("roleKey", "IMPLEMENTER");
+        implementer.put("description", "负责测试和验收");
+        implementer.put("isSystem", true);
+        roles.add(implementer);
+
+        Map<String, Object> guest = new HashMap<>();
+        guest.put("id", 7);
+        guest.put("roleName", "只读用户");
+        guest.put("roleKey", "GUEST");
+        guest.put("description", "只能查看需求");
+        guest.put("isSystem", true);
+        roles.add(guest);
+
         return Result.success(roles);
     }
 
     /**
      * 获取指定角色的详细信息
-     * <p>
-     * 根据角色代码返回该角色的完整配置，包括权限列表和可访问菜单。
-     * </p>
-     *
-     * @param code 角色代码（0-只读，1-普通，2-管理员，3-项目经理）
-     * @return 角色详细信息
      */
     @Operation(summary = "获取角色详情", description = "获取指定角色的详细信息")
-    @GetMapping("/{code}")
+    @GetMapping("/{id}")
     public Result<Map<String, Object>> getRoleDetail(
-            @Parameter(description = "角色代码") @PathVariable Integer code) {
+            @Parameter(description = "角色ID") @PathVariable Long id) {
         
         Map<String, Object> role = new HashMap<>();
+        role.put("id", id);
         
-        switch (code) {
-            case 0:
-                role.put("code", 0);
-                role.put("name", "只读用户");
-                role.put("description", "仅可查看信息，无编辑权限");
-                role.put("permissions", Arrays.asList("查看需求", "查看附件", "查看用户"));
-                role.put("menus", Arrays.asList("/dashboard", "/demand"));
-                break;
+        switch (id.intValue()) {
             case 1:
-                role.put("code", 1);
-                role.put("name", "普通用户");
-                role.put("description", "可创建和管理自己的需求");
-                role.put("permissions", Arrays.asList("创建需求", "编辑草稿", "删除草稿", "撤回需求", "查看需求", "查看附件", "评论需求"));
-                role.put("menus", Arrays.asList("/dashboard", "/demand"));
+                role.put("roleName", "超级管理员");
+                role.put("roleKey", "SUPER_ADMIN");
+                role.put("description", "拥有所有权限，管理系统所有资源");
                 break;
             case 2:
-                role.put("code", 2);
-                role.put("name", "管理员");
-                role.put("description", "系统最高权限，管理所有资源");
-                role.put("permissions", Arrays.asList("所有权限", "用户管理", "角色管理", "系统配置", "数据导出", "日志查看"));
-                role.put("menus", Arrays.asList("/dashboard", "/demand", "/user", "/role"));
+                role.put("roleName", "普通用户");
+                role.put("roleKey", "USER");
+                role.put("description", "可以提出和管理自己的需求");
                 break;
             case 3:
-                role.put("code", 3);
-                role.put("name", "项目经理");
-                role.put("description", "可审批和分配需求");
-                role.put("permissions", Arrays.asList("审批需求", "分配负责人", "查看所有需求", "编辑需求", "查看附件", "评论需求"));
-                role.put("menus", Arrays.asList("/dashboard", "/demand"));
+                role.put("roleName", "产品经理");
+                role.put("roleKey", "PRODUCT_MANAGER");
+                role.put("description", "负责需求管理和审批");
+                break;
+            case 4:
+                role.put("roleName", "项目经理");
+                role.put("roleKey", "PROJECT_MANAGER");
+                role.put("description", "负责项目管理和需求分配");
+                break;
+            case 5:
+                role.put("roleName", "开发工程师");
+                role.put("roleKey", "DEVELOPER");
+                role.put("description", "负责需求开发实现");
+                break;
+            case 6:
+                role.put("roleName", "实施/测试");
+                role.put("roleKey", "IMPLEMENTER");
+                role.put("description", "负责需求测试和验收");
+                break;
+            case 7:
+                role.put("roleName", "只读用户");
+                role.put("roleKey", "GUEST");
+                role.put("description", "仅可查看信息，无编辑权限");
                 break;
             default:
                 return Result.error(404, "角色不存在");
         }
+        
+        // 查询角色的权限列表
+        List<Permission> permissions = permissionMapper.selectPermissionsByRoleId(id);
+        role.put("permissions", permissions.stream()
+                .map(Permission::getPerms)
+                .filter(perms -> perms != null && !perms.isEmpty())
+                .collect(Collectors.toList()));
+        
+        // 查询角色的菜单列表
+        List<Map<String, Object>> menus = buildMenuTree(permissions);
+        role.put("menus", menus);
         
         return Result.success(role);
     }
 
     /**
      * 获取当前用户可访问的菜单
-     * <p>
-     * 根据用户角色动态生成菜单列表，实现前端路由级别的权限控制。
-     * 不同角色看到的菜单项不同：
-     * <ul>
-     *   <li>所有角色：首页、需求管理</li>
-     *   <li>管理员额外：用户管理、角色权限管理、操作日志</li>
-     * </ul>
-     * </p>
-     * 
-     * <p>
-     * <b>前端使用示例</b>：
-     * <pre>{@code
-     * // 登录后调用此接口
-     * const menus = await getUserMenus()
-     * // 根据返回的菜单列表渲染侧边栏
-     * menus.forEach(menu => {
-     *   addRoute({ path: menu.path, component: ... })
-     * })
-     * }</pre>
-     * </p>
-     *
-     * @return 菜单列表（包含 path、name、icon、title、roles）
      */
-    @Operation(summary = "获取当前用户可访问的菜单", description = "根据用户角色返回可访问的菜单列表")
+    @Operation(summary = "获取当前用户可访问的菜单", description = "根据用户角色返回可访问的菜单树")
     @GetMapping("/menus")
     public Result<List<Map<String, Object>>> getUserMenus() {
         Long userId = permissionContext.getUserId();
@@ -188,59 +180,241 @@ public class RoleController {
         List<String> userRoles = permissionContext.getRoles();
         log.info("获取用户菜单: userId={}, roles={}", userId, userRoles);
 
-        // 2. 根据用户角色过滤菜单
-        List<Map<String, Object>> menus = new ArrayList<>();
+        // 查询用户的所有权限
+        List<Permission> permissions = permissionMapper.selectPermissionsByUserId(userId);
+        
+        // 构建菜单树
+        List<Map<String, Object>> menuTree = buildMenuTree(permissions);
 
-        // 首页 - 所有角色可访问
-        Map<String, Object> dashboard = new HashMap<>();
-        dashboard.put("path", "/dashboard");
-        dashboard.put("name", "Dashboard");
-        dashboard.put("icon", "HomeFilled");
-        dashboard.put("title", "首页");
-        dashboard.put("roles", Arrays.asList("READ_ONLY", "USER", "ADMIN", "PROJECT_MANAGER"));
-        menus.add(dashboard);
+        log.info("返回菜单数量: {}, userId={}", menuTree.size(), userId);
+        return Result.success(menuTree);
+    }
 
-        // 需求管理 - 所有角色可访问
-        Map<String, Object> demand = new HashMap<>();
-        demand.put("path", "/demand");
-        demand.put("name", "Demand");
-        demand.put("icon", "List");
-        demand.put("title", "需求管理");
-        demand.put("roles", Arrays.asList("READ_ONLY", "USER", "ADMIN", "PROJECT_MANAGER"));
-        menus.add(demand);
+    /**
+     * 获取所有权限列表（用于角色授权）
+     */
+    @Operation(summary = "获取所有权限列表", description = "获取系统中所有权限，用于角色授权配置")
+    @RequirePermission(roles = {1})
+    @GetMapping("/permissions")
+    public Result<List<Map<String, Object>>> getAllPermissions() {
+        List<Permission> allPermissions = permissionMapper.selectList(null);
+        
+        // 构建树形结构
+        List<Map<String, Object>> permissionTree = buildPermissionTree(allPermissions);
+        
+        return Result.success(permissionTree);
+    }
 
-        // 管理员专属菜单
-        boolean isAdmin = userRoles.contains("ADMIN");
-        if (isAdmin) {
-            // 用户管理
-            Map<String, Object> user = new HashMap<>();
-            user.put("path", "/user");
-            user.put("name", "User");
-            user.put("icon", "UserFilled");
-            user.put("title", "用户管理");
-            user.put("roles", Arrays.asList("ADMIN"));
-            menus.add(user);
+    /**
+     * 为角色分配权限
+     */
+    @Operation(summary = "为角色分配权限", description = "为指定角色分配权限列表")
+    @RequirePermission(roles = {1})
+    @PutMapping("/{id}/permissions")
+    public Result<?> assignPermissions(
+            @Parameter(description = "角色ID") @PathVariable Long id,
+            @RequestBody Map<String, List<Long>> params) {
+        
+        List<Long> permissionIds = params.get("permissionIds");
+        if (permissionIds == null) {
+            return Result.error(400, "权限ID列表不能为空");
+        }
+        
+        // 检查是否为系统角色
+        if (id <= 7) {
+            log.warn("尝试修改系统角色权限: roleId={}", id);
+            // 系统角色允许修改，但需要记录日志
+        }
+        
+        try {
+            // 删除角色的原有权限
+            jdbcTemplate.update("DELETE FROM sys_role_permission WHERE role_id = ?", id);
+            
+            // 插入新的权限关联
+            for (Long permissionId : permissionIds) {
+                jdbcTemplate.update(
+                    "INSERT INTO sys_role_permission (role_id, permission_id) VALUES (?, ?)",
+                    id, permissionId
+                );
+            }
+            
+            log.info("角色权限分配成功: roleId={}, permissionCount={}", id, permissionIds.size());
+            return Result.success();
+        } catch (Exception e) {
+            log.error("角色权限分配失败: roleId={}", id, e);
+            return Result.error(500, "权限分配失败: " + e.getMessage());
+        }
+    }
 
-            // 角色权限管理
-            Map<String, Object> role = new HashMap<>();
-            role.put("path", "/role");
-            role.put("name", "Role");
-            role.put("icon", "Management");
-            role.put("title", "角色权限管理");
-            role.put("roles", Arrays.asList("ADMIN"));
-            menus.add(role);
-
-            // 操作日志
-            Map<String, Object> log = new HashMap<>();
-            log.put("path", "/log");
-            log.put("name", "Log");
-            log.put("icon", "Document");
-            log.put("title", "操作日志");
-            log.put("roles", Arrays.asList("ADMIN"));
-            menus.add(log);
+    /**
+     * 构建权限树
+     */
+    private List<Map<String, Object>> buildPermissionTree(List<Permission> permissions) {
+        if (permissions == null || permissions.isEmpty()) {
+            return new ArrayList<>();
         }
 
-        log.info("返回菜单数量: {}, userId={}", menus.size(), userId);
-        return Result.success(menus);
+        // 按sort排序
+        permissions.sort(Comparator.comparing(Permission::getSort));
+
+        // 构建映射关系
+        Map<Long, Map<String, Object>> permissionMap = new LinkedHashMap<>();
+        for (Permission perm : permissions) {
+            Map<String, Object> node = new HashMap<>();
+            node.put("id", perm.getId());
+            node.put("parentId", perm.getParentId());
+            node.put("name", perm.getName());
+            node.put("type", perm.getType());
+            node.put("path", perm.getPath());
+            node.put("perms", perm.getPerms());
+            node.put("icon", perm.getIcon());
+            node.put("sort", perm.getSort());
+            node.put("children", new ArrayList<Map<String, Object>>());
+            permissionMap.put(perm.getId(), node);
+        }
+
+        // 构建树形结构
+        List<Map<String, Object>> rootNodes = new ArrayList<>();
+        for (Map<String, Object> node : permissionMap.values()) {
+            Long parentId = ((Number) node.get("parentId")).longValue();
+            if (parentId == 0) {
+                rootNodes.add(node);
+            } else {
+                Map<String, Object> parent = permissionMap.get(parentId);
+                if (parent != null) {
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> children = (List<Map<String, Object>>) parent.get("children");
+                    children.add(node);
+                }
+            }
+        }
+
+        return rootNodes;
+    }
+
+    /**
+     * 构建菜单树
+     */
+    private List<Map<String, Object>> buildMenuTree(List<Permission> permissions) {
+        if (permissions == null || permissions.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        // 过滤出菜单和目录（type=1或type=2）
+        List<Permission> menuPermissions = permissions.stream()
+                .filter(p -> p.getType() == 1 || p.getType() == 2)
+                .sorted(Comparator.comparing(Permission::getSort))
+                .collect(Collectors.toList());
+
+        // 构建映射关系
+        Map<Long, Map<String, Object>> menuMap = new LinkedHashMap<>();
+        for (Permission perm : menuPermissions) {
+            Map<String, Object> menu = new HashMap<>();
+            menu.put("id", perm.getId());
+            menu.put("parentId", perm.getParentId());
+            menu.put("path", perm.getPath());
+            menu.put("name", generateRouteName(perm.getPath(), perm.getName()));
+            menu.put("component", generateComponentPath(perm.getPath(), perm.getType()));
+            menu.put("redirect", perm.getParentId() == 0 ? generateRedirect(perm.getPath()) : null);
+            
+            Map<String, Object> meta = new HashMap<>();
+            meta.put("title", perm.getName());
+            meta.put("icon", perm.getIcon() != null ? perm.getIcon().replace("el-icon-", "") : "");
+            meta.put("perms", perm.getPerms());
+            menu.put("meta", meta);
+            
+            menu.put("children", new ArrayList<Map<String, Object>>());
+            menuMap.put(perm.getId(), menu);
+        }
+
+        // 构建树形结构
+        List<Map<String, Object>> rootMenus = new ArrayList<>();
+        for (Map<String, Object> menu : menuMap.values()) {
+            Long parentId = ((Number) menu.get("parentId")).longValue();
+            if (parentId == 0) {
+                rootMenus.add(menu);
+            } else {
+                Map<String, Object> parent = menuMap.get(parentId);
+                if (parent != null) {
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> children = (List<Map<String, Object>>) parent.get("children");
+                    children.add(menu);
+                }
+            }
+        }
+
+        // 清理空的children和内部字段
+        cleanMenuTree(rootMenus);
+        
+        return rootMenus;
+    }
+
+    /**
+     * 清理菜单树
+     */
+    private void cleanMenuTree(List<Map<String, Object>> menus) {
+        for (Map<String, Object> menu : menus) {
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> children = (List<Map<String, Object>>) menu.get("children");
+            if (children != null && !children.isEmpty()) {
+                cleanMenuTree(children);
+            } else {
+                menu.remove("children");
+            }
+            menu.remove("parentId");
+            menu.remove("id");
+        }
+    }
+
+    /**
+     * 生成路由名称
+     */
+    private String generateRouteName(String path, String name) {
+        if (path == null || path.isEmpty()) {
+            return "Unknown";
+        }
+        String[] parts = path.replaceAll("^/", "").split("/");
+        StringBuilder routeName = new StringBuilder();
+        for (String part : parts) {
+            if (!part.isEmpty()) {
+                routeName.append(Character.toUpperCase(part.charAt(0)));
+                if (part.length() > 1) {
+                    routeName.append(part.substring(1));
+                }
+            }
+        }
+        return routeName.toString();
+    }
+
+    /**
+     * 生成组件路径
+     */
+    private String generateComponentPath(String path, Integer type) {
+        if (path == null || path.isEmpty()) {
+            return null;
+        }
+        
+        if (type == 1) {
+            return "Layout";
+        }
+        
+        String cleanPath = path.replaceAll("^/", "");
+        String[] parts = cleanPath.split("/");
+        
+        if (parts.length == 1) {
+            return "views/" + parts[0] + "/index.vue";
+        } else {
+            return "views/" + String.join("/", parts) + ".vue";
+        }
+    }
+
+    /**
+     * 生成重定向路径
+     */
+    private String generateRedirect(String path) {
+        if (path == null || path.isEmpty()) {
+            return null;
+        }
+        return path + "/" + path.replaceAll(".*/", "");
     }
 }
